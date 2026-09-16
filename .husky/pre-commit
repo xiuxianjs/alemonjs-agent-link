@@ -1,4 +1,0 @@
-find . -name ".DS_Store" -type f -delete
-node scripts/scan-staged-secrets.mjs
-npm run format
-npm run check-format
