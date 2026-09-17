@@ -255,6 +255,7 @@ def validate_preflight() -> str | None:
     system = platform.system()
     if system == 'Darwin' and not Path('/usr/bin/sandbox-exec').is_file(): return 'sandbox-exec is unavailable.'
     if system == 'Linux' and not linux_bwrap_path(): return 'bubblewrap (bwrap) is unavailable; install it or set DSH_BWRAP_EXECUTABLE.'
+    if system == 'Windows': return 'Native Windows workers are unsupported; run the complete service inside WSL2 or a Linux host.'
     if system not in {'Darwin', 'Linux'}: return f'AgentLink sandbox workers do not support {system}.'
     if SDK_ERROR: return f'DSH runtime unavailable: {SDK_ERROR}'
     parsed = urlparse(MODEL_BASE_URL)

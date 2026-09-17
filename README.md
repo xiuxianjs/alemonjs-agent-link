@@ -6,7 +6,9 @@
 
 ## 快速开始
 
-**运行条件：** macOS 或 Linux、Node.js、Docker（或一个可用的 Redis）、QQ Bot 配置。macOS 需要系统自带的 `sandbox-exec`；Linux 需要 Bubblewrap（`bwrap`）。首次启动时会自动创建插件专用 Python 环境并安装 DSH SDK。
+默认 `runtimeMode: auto`：优先启用沙箱；本地环境准备失败时，自动降级为 Node 直连模型的纯聊天模式。纯聊天可在 Windows、macOS、Linux 上运行，不需要 Python 或 Bubblewrap，但仍需要 Redis、有效模型凭证和兼容 Chat Completions 的 HTTPS 模型服务。降级时网页、文件和终端工具均关闭。
+
+**运行条件：** macOS 或 Linux、Node.js、Docker（或一个可用的 Redis）、QQ Bot 配置。macOS 需要系统自带的 `sandbox-exec`；Linux 需要 Bubblewrap（`bwrap`）。Windows 请在 WSL2 内运行完整服务，不支持原生 Windows Worker。首次启动时会自动创建插件专用 Python 环境并安装 DSH SDK。
 
 ```bash
 yarn install
