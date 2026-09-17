@@ -1,6 +1,6 @@
 {
   "name": "alemonjs-agent-link",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "AgentLink",
   "author": {
     "name": "ningmengchongshui",
@@ -26,7 +26,7 @@
     "view": "npx lvy dev --jsxp",
     "build": "yarn install --frozen-lockfile && npx lvy build",
     "bundle": "yarn install --frozen-lockfile && npx lvy build",
-    "test": "npx lvy build && npx eslint src && node --test --test-force-exit test/*.test.mjs && python3 -m unittest python/test_dsh_bridge.py",
+    "test": "npx lvy build && npx eslint src && node --test --test-force-exit test/*.test.mjs && python3 -m unittest scripts/test_dsh_bridge.py",
     "eslint": "eslint src --fix",
     "link-codex": "ln -s \"$PWD/.github/skills\" \"$PWD/.codex/skills\"",
     "format": "prettier --write .",
