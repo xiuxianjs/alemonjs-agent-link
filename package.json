@@ -1,6 +1,6 @@
 {
   "name": "alemonjs-agent-link",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "AgentLink",
   "author": {
     "name": "ningmengchongshui",
@@ -80,6 +80,18 @@
       {
         "description": "默认 DSH 模型",
         "name": "model",
+        "required": false,
+        "type": "string"
+      },
+      {
+        "description": "模型服务 API Key，仅保存在 alemon.config.yaml",
+        "name": "apiKey",
+        "required": false,
+        "type": "string"
+      },
+      {
+        "description": "模型服务 API Base URL",
+        "name": "baseUrl",
         "required": false,
         "type": "string"
       },

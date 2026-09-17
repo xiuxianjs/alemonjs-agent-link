@@ -16,13 +16,7 @@ yarn dev --login qq-bot
 
 在启动前，将 QQ Bot、Redis 和主人账号配置写入本机的 `alemon.config.yaml`。该文件包含密钥，已经被 Git 忽略；不要提交、截图或复制到公开环境。配置示例与所有可调参数见 [配置指南](docs/config.md)。
 
-机器人上线后，主人先在**私聊**中绑定模型凭证：
-
-```text
-/agentbind <API_KEY> [BASE_URL]
-```
-
-绑定消息会经过 QQ；绑定成功后应立即删除该消息。发送 `/agentstatus` 确认服务已就绪。
+在 `alemon.config.yaml` 的 `alemonjs-agent-link` 中设置 `apiKey`、可选 `baseUrl` 与 `model` 后启动。发送 `/agentstatus` 确认服务已就绪。
 
 生产环境先构建再启动：
 
@@ -60,8 +54,8 @@ yarn start --login qq-bot
 
 | 操作               | 用法                                                                 |
 | ------------------ | -------------------------------------------------------------------- |
-| 绑定或移除模型凭证 | `/agentbind <API_KEY> [BASE_URL]`、`/agentunbind`                    |
-| 查看或切换模型     | `/agentmodels`、`/agentmodel [模型ID]`                               |
+| 配置模型凭证       | 修改 `alemon.config.yaml` 的 `alemonjs-agent-link.apiKey` 后重启     |
+| 查看模型           | `/agentmodels`、`/agentmodel`                                        |
 | 查看完整状态       | `/agentstatus`                                                       |
 | 私聊使用 Agent     | `/chat 你的问题`                                                     |
 | 彻底删除指定群数据 | 在目标群中执行 `/agentpurge`，再于 60 秒内执行 `/agentpurge confirm` |
