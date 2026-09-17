@@ -6,7 +6,7 @@
 
 ## 快速开始
 
-**运行条件：** macOS、Node.js、Docker（或一个可用的 Redis）、QQ Bot 配置。首次启动时会自动创建插件专用 Python 环境并安装 DSH SDK。
+**运行条件：** macOS 或 Linux、Node.js、Docker（或一个可用的 Redis）、QQ Bot 配置。macOS 需要系统自带的 `sandbox-exec`；Linux 需要 Bubblewrap（`bwrap`）。首次启动时会自动创建插件专用 Python 环境并安装 DSH SDK。
 
 ```bash
 yarn install

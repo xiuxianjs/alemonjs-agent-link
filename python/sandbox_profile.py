@@ -1,4 +1,4 @@
-"""Build the macOS sandbox-exec profile used for an isolated group worker."""
+"""Build platform-specific sandbox launchers for an isolated group worker."""
 import sys
 from pathlib import Path
 
@@ -31,3 +31,49 @@ def macos_profile(workspace: Path, dsh_home: Path, runtime: Path, python_root: P
 {read_rules}
 {metadata_rules}
 '''
+
+
+def linux_bwrap_command(
+    bwrap: str,
+    workspace: Path,
+    dsh_home: Path,
+    runtime: Path,
+    python_root: Path,
+    worker_script: Path,
+    chat_only_patch: Path,
+    python_executable: Path,
+) -> list[str]:
+    """Return a Bubblewrap command with only runtime and group paths mounted.
+
+    Linux's Bubblewrap cannot express a loopback-only egress rule while the
+    Worker needs to reach the parent Bridge over loopback. Network filtering is
+    therefore left to the host/container policy; this launcher confines files,
+    processes, IPC, UTS, and the Worker filesystem namespace.
+    """
+    workspace, dsh_home = workspace.resolve(), dsh_home.resolve()
+    runtime, python_root = runtime.resolve(), python_root.resolve()
+    worker_script, chat_only_patch = worker_script.resolve(), chat_only_patch.resolve()
+    python_executable = python_executable.resolve()
+
+    command = [
+        bwrap,
+        '--die-with-parent', '--new-session',
+        '--unshare-user-try', '--unshare-pid', '--unshare-ipc', '--unshare-uts',
+        '--proc', '/proc', '--dev', '/dev', '--tmpfs', '/tmp',
+    ]
+    # Dynamic loader files and the system interpreter live under these standard
+    # locations. Everything else from the host root remains absent.
+    for path in ('/usr', '/usr/local', '/bin', '/lib', '/lib64'):
+        if Path(path).exists():
+            command.extend(('--ro-bind', path, path))
+    for path in ('/etc/ld.so.cache', '/etc/ld.so.conf', '/etc/ld.so.conf.d', '/etc/alternatives', '/etc/nsswitch.conf', '/etc/hosts', '/etc/resolv.conf', '/etc/ssl'):
+        if Path(path).exists():
+            command.extend(('--ro-bind', path, path))
+    # bwrap creates destination parents for bind mounts. Bind the virtualenv
+    # rather than its parent so the Worker cannot inspect plugin data.
+    for path in (python_root, runtime.parent, worker_script, chat_only_patch):
+        command.extend(('--ro-bind', str(path), str(path)))
+    for path in (workspace, dsh_home):
+        command.extend(('--bind', str(path), str(path)))
+    command.extend(('--chdir', str(workspace), '--', str(python_executable), str(worker_script)))
+    return command

@@ -15,12 +15,13 @@ import time
 import urllib.error
 import urllib.request
 import re
+import shutil
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from sandbox_profile import macos_profile
+from sandbox_profile import linux_bwrap_command, macos_profile
 
 TOKEN = os.environ.get('DSH_BRIDGE_TOKEN', '')
 WORKSPACE_ROOT = Path(os.environ['DSH_WORKSPACE_ROOT']).resolve()
@@ -169,19 +170,53 @@ def sandbox_self_test() -> str | None:
         probe_root = HOME_ROOT / '.sandbox-probe'
         probe_workspace, probe_home = probe_root / 'runtime', probe_root / 'dsh-home'
         probe_workspace.mkdir(parents=True, exist_ok=True); probe_home.mkdir(parents=True, exist_ok=True)
-        profile = macos_profile(probe_workspace, probe_home, RUNTIME_PATH, Path(sys.prefix), WORKER_SCRIPT, CHAT_ONLY_PATCH, 1)
         try:
+            command = sandbox_probe_command(probe_workspace, probe_home, 1)
             result = subprocess.run(
-                ['/usr/bin/sandbox-exec', '-p', profile, sys.executable, '-I', '-c', 'print("agentlink-sandbox-ok")'],
+                command,
                 cwd=str(probe_workspace), env={'PATH': '/usr/bin:/bin', 'LANG': 'en_US.UTF-8'},
                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10
             )
             ok = result.returncode == 0 and result.stdout.strip() == 'agentlink-sandbox-ok'
-            detail = '' if ok else f'sandbox Python self-test failed (exit {result.returncode})'
+            detail = '' if ok else sandbox_self_test_failure(result.returncode, result.stderr, platform.system())
         except Exception as error:
             ok, detail = False, f'sandbox Python self-test failed: {type(error).__name__}'
         SANDBOX_CHECK = (ok, detail, now)
         return None if ok else detail
+
+def sandbox_self_test_failure(returncode: int, stderr: str, system: str) -> str:
+    """Convert known sandbox bootstrap failures into safe operator guidance."""
+    message = stderr.lower()
+    if system == 'Linux' and ('no permissions to create new namespace' in message or 'operation not permitted' in message):
+        return 'sandbox cannot create Linux namespaces; enable unprivileged user namespaces or use a compatible setuid bwrap setup.'
+    if any(marker in message for marker in ('unknown option', 'unrecognized option', 'unknown argument', 'unrecognized argument')):
+        return 'installed bubblewrap is too old for the required sandbox options.'
+    return f'sandbox Python self-test failed (exit {returncode})'
+
+def linux_bwrap_path() -> str | None:
+    configured = os.environ.get('DSH_BWRAP_EXECUTABLE')
+    if configured:
+        candidate = Path(configured)
+        return str(candidate) if candidate.is_file() and os.access(candidate, os.X_OK) else None
+    return shutil.which('bwrap')
+
+def sandbox_command(workspace: Path, dsh_home: Path, proxy_port: int, allow_web: bool) -> list[str]:
+    system = platform.system()
+    if system == 'Darwin':
+        profile = macos_profile(workspace, dsh_home, RUNTIME_PATH, Path(sys.prefix), WORKER_SCRIPT, CHAT_ONLY_PATCH, proxy_port, allow_web)
+        return ['/usr/bin/sandbox-exec', '-p', profile, sys.executable, str(WORKER_SCRIPT)]
+    if system == 'Linux':
+        bwrap = linux_bwrap_path()
+        if not bwrap:
+            raise WorkerError('bubblewrap is unavailable')
+        return linux_bwrap_command(bwrap, workspace, dsh_home, RUNTIME_PATH, Path(sys.prefix), WORKER_SCRIPT, CHAT_ONLY_PATCH, Path(sys.executable))
+    raise WorkerError(f'unsupported sandbox platform: {system}')
+
+def sandbox_probe_command(workspace: Path, dsh_home: Path, proxy_port: int) -> list[str]:
+    command = sandbox_command(workspace, dsh_home, proxy_port, False)
+    if platform.system() == 'Darwin':
+        return command[:-1] + ['-I', '-c', 'print("agentlink-sandbox-ok")']
+    return command[:-2] + [sys.executable, '-I', '-c', 'print("agentlink-sandbox-ok")']
 
 def chat_only_profile_test() -> str | None:
     """Verify DSH itself has applied the explicit no-tools patch."""
@@ -217,8 +252,10 @@ def chat_only_profile_test() -> str | None:
         return detail
 
 def validate_preflight() -> str | None:
-    if platform.system() != 'Darwin': return 'AgentLink sandbox workers require macOS.'
-    if not Path('/usr/bin/sandbox-exec').is_file(): return 'sandbox-exec is unavailable.'
+    system = platform.system()
+    if system == 'Darwin' and not Path('/usr/bin/sandbox-exec').is_file(): return 'sandbox-exec is unavailable.'
+    if system == 'Linux' and not linux_bwrap_path(): return 'bubblewrap (bwrap) is unavailable; install it or set DSH_BWRAP_EXECUTABLE.'
+    if system not in {'Darwin', 'Linux'}: return f'AgentLink sandbox workers do not support {system}.'
     if SDK_ERROR: return f'DSH runtime unavailable: {SDK_ERROR}'
     parsed = urlparse(MODEL_BASE_URL)
     if parsed.scheme != 'https' or not parsed.netloc: return 'A valid HTTPS model base URL is required.'
@@ -258,7 +295,6 @@ class Worker:
         if self.process and self.process.poll() is None: return
         self.runtime_dir.mkdir(parents=True, exist_ok=True); self.dsh_home.mkdir(parents=True, exist_ok=True)
         self.policy_patch.write_text(tool_policy_patch(self.capabilities), encoding='utf-8')
-        profile = macos_profile(self.runtime_dir, self.dsh_home, RUNTIME_PATH, Path(sys.prefix), WORKER_SCRIPT, self.policy_patch, self.port, self.capabilities['web'])
         # Do not inherit parent env: the actual model key stays only in this bridge.
         env = {
             'PATH': '/usr/bin:/bin', 'LANG': 'en_US.UTF-8', 'PYTHONIOENCODING': 'utf-8',
@@ -266,7 +302,7 @@ class Worker:
             'DSH_WORKSPACE': str(self.runtime_dir), 'DSH_HOME': str(self.dsh_home),
             'DSH_PROFILE': PROFILE, 'DSH_PROVIDER': PROVIDER, 'DSH_MODEL': MODEL,
             # DSH's workspace-write preset asks for an interactive approval that
-            # QQ cannot render. The outer macOS sandbox still restricts this
+            # QQ cannot render. The outer OS sandbox still restricts this
             # worker to its own workspace and DSH home.
             'DSH_PERMISSION_MODE': 'danger-full-access' if self.capabilities['files'] or self.capabilities['terminal'] else 'read-only',
             'DSH_CHAT_ONLY_PATCH': str(self.policy_patch),
@@ -275,7 +311,7 @@ class Worker:
         }
         self.stderr_lines.clear(); self.stderr_bytes = 0; self.last_event_type = 'started'; self.last_phase = 'worker-start'
         self.stdout_queue = queue.Queue()
-        self.process = subprocess.Popen(['/usr/bin/sandbox-exec', '-p', profile, sys.executable, str(WORKER_SCRIPT)],
+        self.process = subprocess.Popen(sandbox_command(self.runtime_dir, self.dsh_home, self.port, self.capabilities['web']),
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', bufsize=1, env=env, cwd=str(self.runtime_dir))
         assert self.process.stdout and self.process.stderr
         threading.Thread(target=self._drain_stdout, args=(self.process.stdout, self.stdout_queue), name=f'dsh-stdout-{self.key[:8]}', daemon=True).start()
@@ -415,7 +451,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path != '/health' or not self.authorized(): self.send_error(HTTPStatus.UNAUTHORIZED); return
         error = validate_preflight()
-        if error: self.send_error(HTTPStatus.SERVICE_UNAVAILABLE, error); return
+        if error:
+            self.send_response(HTTPStatus.SERVICE_UNAVAILABLE)
+            self.send_header('Content-Type', 'text/plain; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(error.encode('utf-8'))
+            return
         self.send_response(HTTPStatus.OK); self.send_header('Content-Type', 'application/json'); self.end_headers(); self.wfile.write(b'{"status":"ready","sandbox":true}')
     def do_DELETE(self):
         if not self.authorized(): self.send_error(HTTPStatus.UNAUTHORIZED); return
@@ -434,7 +475,12 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith('/internal/egress/'): self.proxy_egress(); return
         if self.path != '/v1/chat' or not self.authorized(): self.send_error(HTTPStatus.UNAUTHORIZED); return
         error = validate_preflight()
-        if error: self.send_error(HTTPStatus.SERVICE_UNAVAILABLE, error); return
+        if error:
+            self.send_response(HTTPStatus.SERVICE_UNAVAILABLE)
+            self.send_header('Content-Type', 'text/plain; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(error.encode('utf-8'))
+            return
         try:
             body = self.json_body(); session_id, prompt = body['sessionId'], body['message']; key = group_key(session_id); capabilities = valid_capabilities(body.get('capabilities'))
             if not isinstance(prompt, str) or not prompt.strip() or not capabilities or not capabilities['chat'] or blocked(prompt, INPUT_BLOCKED): raise ValueError('invalid message')

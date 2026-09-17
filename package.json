@@ -1,6 +1,6 @@
 {
   "name": "alemonjs-agent-link",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "AgentLink",
   "author": {
     "name": "ningmengchongshui",
@@ -11,7 +11,11 @@
   "main": "lib/index.js",
   "files": [
     "lib",
-    "python",
+    "python/chat_only.patch.yml",
+    "python/dsh_bridge.py",
+    "python/dsh_worker.py",
+    "python/requirements.txt",
+    "python/sandbox_profile.py",
     "README.md"
   ],
   "exports": {
