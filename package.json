@@ -1,6 +1,6 @@
 {
   "name": "alemonjs-agent-link",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "AgentLink",
   "author": {
     "name": "ningmengchongshui",
@@ -10,6 +10,7 @@
   "type": "module",
   "main": "lib/index.js",
   "files": [
+    "bin",
     "lib",
     "python/chat_only.patch.yml",
     "python/dsh_bridge.py",
@@ -26,14 +27,16 @@
   },
   "scripts": {
     "dev": "npx lvy app.ts",
-    "start": "node index.js",
+    "start": "node bin/agent-link.mjs",
     "view": "npx lvy dev --jsxp",
     "test": "npx lvy build && npx eslint src && node --test --test-force-exit test/*.test.mjs && python3 -m unittest scripts/test_dsh_bridge.py scripts/test_dsh_worker.py",
     "eslint": "eslint src --fix",
     "link-codex": "ln -s \"$PWD/.github/skills\" \"$PWD/.codex/skills\"",
     "format": "prettier --write .",
     "check-format": "git diff --exit-code",
-    "sync-qq-commands": "node scripts/sync-qq-command-panels.mjs"
+    "sync-qq-commands": "node scripts/sync-qq-command-panels.mjs",
+    "init": "node bin/agent-link.mjs init",
+    "doctor": "node bin/agent-link.mjs doctor"
   },
   "keywords": [
     "alemonjs"
@@ -170,7 +173,7 @@
         "name": "groupWakeNames",
         "type": "array",
         "required": false,
-        "description": "群聊开头唤醒称呼，默认 [大肥鱼]，空数组关闭"
+        "description": "群聊求助或呼唤关键词，默认 [帮我, 肥鱼, 大肥鱼]，消息任意位置匹配，空数组关闭"
       },
       {
         "name": "stateBackend",
@@ -202,10 +205,18 @@
     "url": "https://github.com/xiuxianjs/agent-link.git"
   },
   "dependencies": {
-    "@alemonjs/db": "^0.0.21"
+    "@alemonjs/db": "^0.0.21",
+    "@alemonjs/qq-bot": "^2.1.41",
+    "alemonjs": "^2.1.114",
+    "proper-lockfile": "^4.1.2",
+    "qrcode": "^1.5.4",
+    "yaml": "^2.9.1"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.13.0"
   },
-  "gitHead": "78f63608c3ae3fd365682ec6e036020f89e7c7e6"
+  "bin": {
+    "agent-link": "bin/agent-link.mjs"
+  },
+  "gitHead": "e680de72f62622e7de1b6fee1e21885b76cda510"
 }

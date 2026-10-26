@@ -1,20 +1,37 @@
 # AgentLink
 
-在 QQ 群和私聊中提供受限的 AI 对话，内置大肥鱼文字人设。群成员通过 @机器人或 `/chat` 发起提问；每个群拥有独立会话和隔离 Worker。
+在 QQ 群和私聊中提供受限的 AI 对话，内置大肥鱼文字人设。群成员通过 @机器人、`/chat` 或包含“帮我”“肥鱼”“大肥鱼”的消息发起提问；每个群拥有独立会话和隔离 Worker。
 
 默认群聊支持联网查询；主人可为指定群分别开启文件和终端。所有工具仍受群级隔离工作区限制，子代理与工作流始终关闭。
 
 ## 快速开始
 
-默认 `runtimeMode: auto`：优先启用沙箱；本地环境准备失败时，自动降级为 Node 直连模型的纯聊天模式。
+只需要 **Node.js 22.13+**。运行时依赖会随安装包安装，无需自行准备 Redis、Docker、Python 或 Git。
 
-**运行条件：** Node.js 22.12+、AlemonJS 和 QQ Bot 配置。默认无需 Redis、Docker 或 Python，也无需管理员权限。
+运行包含新启动器的发布版本：
 
-未配置框架 `db.redis` 时使用本地文件状态库；已有 Redis 配置继续使用 Redis。macOS / Linux 有可用沙箱和 Python 时自动准备 Worker，否则静默进入 Node 纯聊天模式。Windows 原生使用纯聊天；完整 Worker 仍需 WSL2。纯聊天不提供网页、文件或终端工具。
+```bash
+npx alemonjs-agent-link
+```
 
-启动前仅需填写本机 `alemon.config.yaml` 的 QQ Bot 和模型凭证，配置示例见 [配置指南](docs/config.md)。
+首次会在用户配置目录生成 `alemon.config.yaml` 并显示路径。只需填写模型 API Key（默认 DeepSeek），重跑同一命令后按终端二维码完成 QQ 授权。已有 QQ AppID、密钥可直接填写并跳过扫码；扫码授权会更新该机器人的密钥。已有配置不会被覆盖。使用其他模型服务时再补充 `baseUrl` 和 `model`，见[配置指南](docs/config.md)。此入口随本次源码提供，需发布包含新启动器的版本后才能通过 npm 获取。
 
-在 `alemon.config.yaml` 的 `alemonjs-agent-link` 中设置 `apiKey`、可选 `baseUrl` 与 `model` 后启动。发送 `/agentstatus` 确认服务已就绪。
+在本仓库运行则执行 `npm install`、`npm run build`、`npm start`；后续直接 `npm start`。使用现有 AlemonJS 加载插件的方式也继续支持。
+
+配置和数据默认保存在固定用户目录，换工作目录运行不会另建空库；检测到本地旧配置时继续使用并记住它。需要便携目录时使用 `--portable`，指定配置使用 `--config 路径`。
+
+默认使用本地持久化状态；已有框架 `db.redis` 配置时继续使用 Redis。Node 普通聊天先准备，沙箱和 Python 在后台准备；暂不可用时自动退避重试。普通聊天不提供网页、文件或终端工具；完整 Worker 的平台条件见[运维手册](docs/operations.md)。
+
+成功会提示 QQ 已在线和聊天运行时已准备。常规日志集中保存在数据目录下的 `startup.log`，需要扫码或处理错误时才给出操作提示。
+
+遇到问题只需运行检查命令，不会连接 QQ、模型服务或安装依赖：
+
+```bash
+npx alemonjs-agent-link doctor
+# 本仓库使用 npm run doctor
+```
+
+填好配置后，在 QQ 发送 `/agentstatus` 查看实际运行状态。模型和 QQ 是否连接成功以真实请求为准。
 
 ## 使用方法
 
@@ -32,7 +49,7 @@
 | 查看隐私说明   | `/agentprivacy`                                            |
 | 查看帮助       | `/agenthelp`                                               |
 
-普通群消息不会单独触发模型；它们会在短时间内作为下一次提问的参考。默认保留最近 20 条、15 分钟，且会被压缩后提供给模型。
+群聊会将短暂停顿前的消息合并后回应，默认等待 1.5 秒、持续发言时最多聚合 6 秒。普通消息也可能按话题相关度和限额触发插话；不想开放自主参与时设置 `groupChat.enabled: false`。近期参考默认保留最近 20 条、15 分钟，压缩后提供给模型。详细策略见[群聊参与配置](docs/config.md#群聊参与策略)。
 
 ### 群管理员或机器人主人
 
@@ -45,13 +62,13 @@
 
 ### 机器人主人（私聊）
 
-| 操作               | 用法                                                                 |
-| ------------------ | -------------------------------------------------------------------- |
-| 配置模型凭证       | 修改 `alemon.config.yaml` 的 `alemonjs-agent-link.apiKey` 后重启     |
-| 查看模型           | `/agentmodels`、`/agentmodel`                                        |
-| 查看完整状态       | `/agentstatus`                                                       |
-| 私聊使用 Agent     | 直接发送文字，或 `/chat 你的问题`                                    |
-| 彻底删除指定群数据 | 在目标群中执行 `/agentpurge`，再于 60 秒内执行 `/agentpurge confirm` |
+| 操作               | 用法                                                                             |
+| ------------------ | -------------------------------------------------------------------------------- |
+| 配置模型凭证       | 修改 `alemon.config.yaml` 的 `alemonjs-agent-link.apiKey` 后保存，新请求自动生效 |
+| 查看模型           | `/agentmodels`、`/agentmodel`                                                    |
+| 查看完整状态       | `/agentstatus`                                                                   |
+| 私聊使用 Agent     | 直接发送文字，或 `/chat 你的问题`                                                |
+| 彻底删除指定群数据 | 在目标群中执行 `/agentpurge`，再于 60 秒内执行 `/agentpurge confirm`             |
 
 ## 运行模型
 
