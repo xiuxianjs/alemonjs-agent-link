@@ -37,6 +37,7 @@ MODEL_BASE_URL = os.environ.get('DEEPSEEK_BASE_URL') or ('https://api.deepseek.c
 MODEL_API_KEY = os.environ.get('DEEPSEEK_API_KEY', '')
 SYSTEM_PROMPT = os.environ.get('DSH_SYSTEM_PROMPT', '你是一个友好、可靠的助手。')
 MAX_BODY = int(os.environ.get('DSH_MAX_REQUEST_BYTES', '1048576'))
+MAX_IMAGE_BODY = 48 * 1024 * 1024
 INPUT_BLOCKED = {item for item in os.environ.get('DSH_INPUT_BLOCKED_KEYWORDS', '').split(',') if item}
 OUTPUT_BLOCKED = {item for item in os.environ.get('DSH_OUTPUT_BLOCKED_KEYWORDS', '').split(',') if item}
 WORKER_IDLE_SECONDS = 300
@@ -67,6 +68,18 @@ except Exception as error:
     SDK_ERROR = str(error)
 
 class WorkerError(Exception): pass
+class WorkerReportedError(WorkerError):
+    messages = {
+        'initialization': 'DSH 初始化失败，自动恢复后仍不可用，请检查本地运行环境。',
+        'invalid-image': '图片无法解码，请重新发送 PNG、JPEG、WebP 或 GIF 图片。',
+        'sandbox-permission': 'DSH 沙箱目录访问失败，请重启服务并检查运行环境。',
+        'execution': 'DSH Agent execution failed',
+    }
+
+    def __init__(self, code):
+        self.code = code if isinstance(code, str) and code in self.messages else 'execution'
+        super().__init__('sandbox worker reported an error: ' + self.code)
+
 class WorkerTimeout(WorkerError): pass
 class ClientDisconnected(WorkerError): pass
 class WorkerCapacityError(WorkerError): pass
@@ -121,6 +134,28 @@ def output_requires_final_review() -> bool:
     # A keyword can cross two model chunks. Do not inspect chunks independently:
     # that would allow a configured block phrase to leak at the boundary.
     return bool(OUTPUT_BLOCKED)
+
+def chat_input_text(value):
+    return value if isinstance(value, str) else '\n'.join(part['text'] for part in value if part['type'] == 'text')
+
+def normalize_chat_input(value):
+    if isinstance(value, str):
+        if not value.strip(): raise ValueError('empty message')
+        return value
+    if not isinstance(value, list) or not value or len(value) > 16: raise ValueError('invalid content')
+    import base64
+    images = 0
+    for part in value:
+        if not isinstance(part, dict): raise ValueError('invalid block')
+        if part.get('type') == 'text' and isinstance(part.get('text'), str): continue
+        if part.get('type') != 'image' or part.get('mimeType') not in ('image/png', 'image/jpeg', 'image/webp', 'image/gif'): raise ValueError('invalid image')
+        data = part.get('data')
+        if not isinstance(data, str) or not data: raise ValueError('empty image')
+        decoded = base64.b64decode(data, validate=True)
+        if base64.b64encode(decoded).decode() != data: raise ValueError('invalid base64')
+        images += 1
+        if images > 5: raise ValueError('too many images')
+    return value
 
 def trusted_prompt(prompt: str, capabilities: dict) -> str:
     tool_rules = []
@@ -391,7 +426,7 @@ class Worker:
                     # Worker details can contain prompt or model text. Keep them
                     # on the authenticated pipe only; neither bridge nor Node
                     # logs may serialize them.
-                    raise WorkerError('sandbox worker reported an error')
+                    raise WorkerReportedError(event.get('code'))
 
 def get_worker(key: str, port: int, capabilities: dict) -> Worker:
     with WORKERS_LOCK:
@@ -448,7 +483,7 @@ class Handler(BaseHTTPRequestHandler):
     def authorized(self) -> bool: return bool(TOKEN) and self.headers.get('Authorization') == f'Bearer {TOKEN}'
     def json_body(self):
         length = int(self.headers.get('Content-Length', '0'))
-        if length < 1 or length > MAX_BODY: raise ValueError('invalid body size')
+        if length < 1 or length > MAX_IMAGE_BODY: raise ValueError('invalid body size')
         return json.loads(self.rfile.read(length))
     def do_GET(self):
         if self.path != '/health' or not self.authorized(): self.send_error(HTTPStatus.UNAUTHORIZED); return
@@ -485,7 +520,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             body = self.json_body(); session_id, prompt = body['sessionId'], body['message']; key = group_key(session_id); capabilities = valid_capabilities(body.get('capabilities'))
-            if not isinstance(prompt, str) or not prompt.strip() or not capabilities or not capabilities['chat'] or blocked(prompt, INPUT_BLOCKED): raise ValueError('invalid message')
+            if isinstance(prompt, str) and len(json.dumps(body).encode()) > MAX_BODY: raise ValueError('text request too large')
+            prompt = normalize_chat_input(prompt)
+            if not prompt or not capabilities or not capabilities['chat'] or blocked(chat_input_text(prompt), INPUT_BLOCKED): raise ValueError('invalid message')
         except (KeyError, ValueError, json.JSONDecodeError): self.send_error(HTTPStatus.BAD_REQUEST); return
         self.send_response(HTTPStatus.OK); self.send_header('Content-Type', 'text/event-stream; charset=utf-8'); self.end_headers()
         streamed = False
@@ -497,7 +534,7 @@ class Handler(BaseHTTPRequestHandler):
                 streamed = True
         try:
             worker = get_worker(key, self.server.server_port, capabilities)
-            result = worker.run(trusted_prompt(prompt, capabilities), session_id, on_content)
+            result = worker.run(trusted_prompt(prompt, capabilities) if isinstance(prompt, str) else [{'type': 'text', 'text': trusted_prompt('', capabilities)}, *prompt], session_id, on_content)
             content = str(result.get('content') or '')
             if not content.strip():
                 # Safe operational signal: event metadata contains no prompt,
@@ -508,6 +545,10 @@ class Handler(BaseHTTPRequestHandler):
             if blocked(content, OUTPUT_BLOCKED): content = '回复因内容安全策略未发送。'
             if not streamed: send_sse(self, {'type': 'content', 'content': content})
             send_sse(self, {'type': 'done'})
+        except WorkerReportedError as error:
+            discard_worker(key)
+            print(f'worker failed key={key[:12]} code={error.code}', file=sys.stderr)
+            send_sse(self, {'type': 'error', 'code': error.code, 'message': error.messages[error.code]})
         except WorkerTimeout as error:
             diagnostics = worker.diagnostic_summary()
             discard_worker(key); print(f'worker timeout key={key[:12]} error={error} {diagnostics}', file=sys.stderr); send_sse(self, {'type': 'error', 'message': 'DSH Agent execution timed out'})
@@ -530,7 +571,7 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get('Content-Length', '0'))
         except ValueError:
             self.send_error(HTTPStatus.BAD_REQUEST); return
-        if length < 0 or length > MAX_BODY:
+        if length < 0 or length > MAX_IMAGE_BODY:
             self.send_error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE); return
         body = self.rfile.read(length) if length else None
         headers = {'Authorization': f'Bearer {MODEL_API_KEY}', 'Accept': self.headers.get('Accept', 'application/json'), 'Content-Type': self.headers.get('Content-Type', 'application/json')}

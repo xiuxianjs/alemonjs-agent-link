@@ -16,6 +16,26 @@ def text_chunks(notification):
     data = event.get('data'); texts = data.get('texts') if isinstance(data, dict) else None
     return [text for text in texts or [] if isinstance(text, str) and text]
 
+def initialize_harness(harness):
+    """Retry only initialization, before any user prompt or tool can run."""
+    for attempt in range(2):
+        try:
+            harness.start()
+            return
+        except Exception:
+            harness.close()
+            if attempt == 1:
+                raise
+
+def execution_error_code(error):
+    # Return constants only: exception text may contain prompts or credentials.
+    message = str(error).lower()
+    if 'unsupported or malformed image' in message:
+        return 'invalid-image'
+    if 'eperm' in message or 'permission denied' in message:
+        return 'sandbox-permission'
+    return 'execution'
+
 def main():
     try:
         from deepseek_harness import DeepSeekHarness
@@ -36,6 +56,12 @@ def main():
     sessions = {}
     # These events carry no request content and are consumed by the bridge only.
     # They make a timeout diagnosable without exposing worker stderr to logs.
+    emit({'type': 'phase', 'phase': 'harness-initialize'})
+    try:
+        initialize_harness(harness)
+    except Exception:
+        emit({'type': 'fatal', 'error': 'DSH initialization failed', 'code': 'initialization'})
+        return 2
     emit({'type': 'ready'})
     for line in sys.stdin:
         try:
@@ -56,7 +82,7 @@ def main():
         except Exception as error:
             # The bridge exposes only the stable error field. Detail is never
             # logged or returned to a chat client because it may include input.
-            emit({'type': 'error', 'error': 'DSH worker execution failed', 'detail': str(error)[-2000:]})
+            emit({'type': 'error', 'error': 'DSH worker execution failed', 'code': execution_error_code(error), 'detail': str(error)[-2000:]})
     harness.close(); return 0
 
 if __name__ == '__main__': raise SystemExit(main())

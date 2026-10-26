@@ -24,6 +24,9 @@ def macos_profile(workspace: Path, dsh_home: Path, runtime: Path, python_root: P
 (allow process-exec (subpath "{runtime.resolve().parent}"))
 (allow file-read* (literal "{worker_script.resolve()}"))
 (allow file-read* (literal "{chat_only_patch.resolve()}"))
+; Attachment storage opens ancestor directories when verifying its safe path.
+; Literal ancestors grant directory traversal, not reads of sibling files.
+(allow file-read-data (path-ancestors "{dsh_home.resolve()}"))
 (allow network-outbound (remote tcp "localhost:{proxy_port}"))
 {'(allow network-outbound)' if allow_web else ''}
 (allow file-read* file-write* (subpath "/dev"))

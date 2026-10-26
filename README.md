@@ -8,17 +8,11 @@
 
 默认 `runtimeMode: auto`：优先启用沙箱；本地环境准备失败时，自动降级为 Node 直连模型的纯聊天模式。
 
-**运行条件：**
+**运行条件：** Node.js 22.12+、AlemonJS 和 QQ Bot 配置。默认无需 Redis、Docker 或 Python，也无需管理员权限。
 
-macOS 或 Linux、Node.js、Docker（或一个可用的 Redis）、QQ Bot 配置。
+未配置框架 `db.redis` 时使用本地文件状态库；已有 Redis 配置继续使用 Redis。macOS / Linux 有可用沙箱和 Python 时自动准备 Worker，否则静默进入 Node 纯聊天模式。Windows 原生使用纯聊天；完整 Worker 仍需 WSL2。纯聊天不提供网页、文件或终端工具。
 
-macOS 需要系统自带的 `sandbox-exec`；
-
-Linux 需要 Bubblewrap（`bwrap`）。
-
-Windows 请在 WSL2 内运行完整服务，不支持原生 Windows Worker。首次启动时会自动创建插件专用 Python 环境并安装 DSH SDK。
-
-在启动前，将 QQ Bot、Redis 和主人账号配置写入本机的 `alemon.config.yaml`。配置示例与所有可调参数见 [配置指南](docs/config.md)。
+启动前仅需填写本机 `alemon.config.yaml` 的 QQ Bot 和模型凭证，配置示例见 [配置指南](docs/config.md)。
 
 在 `alemon.config.yaml` 的 `alemonjs-agent-link` 中设置 `apiKey`、可选 `baseUrl` 与 `model` 后启动。发送 `/agentstatus` 确认服务已就绪。
 
@@ -63,7 +57,7 @@ Windows 请在 WSL2 内运行完整服务，不支持原生 Windows Worker。首
 
 ```text
 QQ / AlemonJS
-  → Redis：去重、限流、会话代际、短时上下文
+  → 本地文件状态库 / Redis：去重、限流、会话代际、短时上下文
   → Node 编排：群内串行、全局并发控制
   → 本机 Bridge：鉴权与受限模型代理
   → 每群 sandbox Worker：DSH chat-only 会话
@@ -76,9 +70,10 @@ AgentLink 仅支持**单 Node 进程**连接同一个 QQ 机器人。不要同�
 - [配置指南](docs/config.md)：配置项、默认值和示例。
 - [运维手册](docs/operations.md)：部署、状态检查和故障处理。
 - [安全与数据](docs/security.md)：沙箱边界、数据生命周期和凭证处理。
+- [模块与业务工具](docs/modules.md)：本地模块热更新、模型工具调用、私聊记忆和扩展接口。
 
 主人私聊支持直接发文字、`/new` 清空会话、`/cancel` 取消请求。纯聊天模式默认保留最近 10 轮私聊历史，最多 24 小时。普通用户私聊默认关闭，可通过 `privateChatAccess: all` 开放，且只允许聊天。详见[大肥鱼与私聊配置](docs/config.md#大肥鱼与私聊)。
 
 群里也可发送“大肥鱼，今天好累”唤醒。私聊支持 `/记住 内容`、`/记忆`、`/忘记 编号`、`/忘记全部`，管理自己的长期资料。能力对标与下一步验收见[大肥鱼能力差距](docs/dafeiyu-roadmap.md)。
 
-图片与语音输入、`/语音 问题` 和 `/表情 标签` 已提供配置入口，见[媒体能力](docs/media.md)。未配置的输入能力会按角色回复“看不懂，就当是夸我了”。
+图片默认使用 DSH 当前模型识别，无需独立识图服务。语音输入、`/语音 问题` 和 `/表情 标签` 已提供配置入口，见[媒体能力](docs/media.md)。未配置的输入能力会按角色回复“看不懂，就当是夸我了”。

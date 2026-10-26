@@ -1,6 +1,6 @@
 {
   "name": "alemonjs-agent-link",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "AgentLink",
   "author": {
     "name": "ningmengchongshui",
@@ -28,7 +28,7 @@
     "dev": "npx lvy app.ts",
     "start": "node index.js",
     "view": "npx lvy dev --jsxp",
-    "test": "npx lvy build && npx eslint src && node --test --test-force-exit test/*.test.mjs && python3 -m unittest scripts/test_dsh_bridge.py",
+    "test": "npx lvy build && npx eslint src && node --test --test-force-exit test/*.test.mjs && python3 -m unittest scripts/test_dsh_bridge.py scripts/test_dsh_worker.py",
     "eslint": "eslint src --fix",
     "link-codex": "ln -s \"$PWD/.github/skills\" \"$PWD/.codex/skills\"",
     "format": "prettier --write .",
@@ -171,6 +171,24 @@
         "type": "array",
         "required": false,
         "description": "群聊开头唤醒称呼，默认 [大肥鱼]，空数组关闭"
+      },
+      {
+        "name": "stateBackend",
+        "type": "string",
+        "required": false,
+        "description": "状态库：未配置 db.redis 时默认 local，本地持久化无需 Redis；显式 redis 不自动降级"
+      },
+      {
+        "name": "runtimeMode",
+        "type": "string",
+        "required": false,
+        "description": "运行模式：auto（自动选择）、chat-only（无需 Python）、sandbox（严格沙箱）"
+      },
+      {
+        "name": "pythonPackageSources",
+        "type": "array",
+        "required": false,
+        "description": "Python 依赖 HTTPS 来源列表；按顺序切换，记住成功来源"
       }
     ]
   },
@@ -186,5 +204,8 @@
   "dependencies": {
     "@alemonjs/db": "^0.0.21"
   },
-  "gitHead": "44832b8c02d5e4bbc377a45ec8c3095207fca922"
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "gitHead": "78f63608c3ae3fd365682ec6e036020f89e7c7e6"
 }
