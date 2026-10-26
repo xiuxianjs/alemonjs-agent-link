@@ -7,8 +7,10 @@ export const redact = (text, config = {}) => {
   const walk = value => {
     if (!value || typeof value !== 'object') return;
     for (const [key, item] of Object.entries(value)) {
-      if (/api.?key|secret|password|authorization|token/i.test(key) && typeof item === 'string' && item) secrets.push(item);
-      else if (item && typeof item === 'object') walk(item);
+      if (/api.?key|secret|password|authorization|token/i.test(key) && typeof item === 'string' && item) {
+        secrets.push(item);
+        if (item.trim()) secrets.push(item.trim());
+      } else if (item && typeof item === 'object') walk(item);
     }
   };
   walk(config);

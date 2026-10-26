@@ -1,6 +1,6 @@
 {
   "name": "alemonjs-agent-link",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "AgentLink",
   "author": {
     "name": "ningmengchongshui",
@@ -27,7 +27,7 @@
   },
   "scripts": {
     "dev": "npx lvy app.ts",
-    "start": "node bin/agent-link.mjs",
+    "start": "node bin/agent-link.cjs",
     "view": "npx lvy dev --jsxp",
     "test": "npx lvy build && npx eslint src && node --test --test-force-exit test/*.test.mjs && python3 -m unittest scripts/test_dsh_bridge.py scripts/test_dsh_worker.py",
     "eslint": "eslint src --fix",
@@ -35,8 +35,8 @@
     "format": "prettier --write .",
     "check-format": "git diff --exit-code",
     "sync-qq-commands": "node scripts/sync-qq-command-panels.mjs",
-    "init": "node bin/agent-link.mjs init",
-    "doctor": "node bin/agent-link.mjs doctor"
+    "init": "node bin/agent-link.cjs init",
+    "doctor": "node bin/agent-link.cjs doctor"
   },
   "keywords": [
     "alemonjs"
@@ -216,7 +216,7 @@
     "node": ">=22.13.0"
   },
   "bin": {
-    "agent-link": "bin/agent-link.mjs"
+    "agent-link": "bin/agent-link.cjs"
   },
-  "gitHead": "e680de72f62622e7de1b6fee1e21885b76cda510"
+  "gitHead": "b23881960b2312ffc81e6c4c3ee4eff1d5c85659"
 }

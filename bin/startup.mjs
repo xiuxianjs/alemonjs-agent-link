@@ -1,4 +1,5 @@
-import { access, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, stat, writeFile, rename } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
@@ -24,6 +25,10 @@ const provided = value =>
   (typeof value === 'number' && Number.isSafeInteger(value) && value > 0);
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const check = (name, status, message) => ({ name, status, message });
+export const supportsNodeVersion = (version = process.versions.node) => {
+  const [major, minor] = version.split('.').map(Number);
+  return major > 22 || (major === 22 && minor >= 13);
+};
 
 // Do not import the framework here: doctor must not start watchers, adapters,
 // Redis clients, model requests or Python installation.
@@ -81,8 +86,7 @@ export const diagnose = async (options = {}) => {
   const cwd = options.cwd ?? process.cwd();
   const { configPath, dataRoot } = await launchPaths(options);
   const checks = [];
-  const [major, minor] = process.versions.node.split('.').map(Number);
-  checks.push(check('node', major > 22 || (major === 22 && minor >= 13) ? 'ok' : 'error', `Node.js ${process.versions.node}；需要 22.13 或更高版本。`));
+  checks.push(check('node', supportsNodeVersion() ? 'ok' : 'error', `Node.js ${process.versions.node}；需要 22.13 或更高版本。`));
   if (checks[0].status === 'ok') {
     const sqlite = spawnSync(process.execPath, ['--input-type=module', '-e', "try { await import('node:sqlite'); } catch { process.exit(1); }"], {
       stdio: 'ignore',
@@ -175,6 +179,10 @@ export const runCLI = async (argv, { cwd = process.cwd(), write = text => proces
     const paths = await launchPaths({ cwd, configPath, portable, homeDir, env });
     configPath = paths.configPath;
     if (command !== 'doctor') {
+      if (!supportsNodeVersion()) {
+        write(`当前 Node.js ${process.versions.node} 不受支持，请升级到 Node.js 22.13 或更高版本后重试。`);
+        return 1;
+      }
       const created = await ensureConfig(configPath);
       if (created || command === 'init') {
         write(`${created ? '已生成最小配置' : '配置已存在'}：${configPath}\n填写模型 API Key 后重跑同一命令；QQ 可扫码登录，也可填写已有 AppID 和密钥。`);
@@ -210,7 +218,10 @@ export const runCLI = async (argv, { cwd = process.cwd(), write = text => proces
     const ownership = await acquireProcessLock(join(dirname(resolved.dshHomeRoot), 'launcher.lock'));
     try {
       await mkdir(paths.homeDir, { recursive: true, mode: 0o700 });
-      await writeFile(join(paths.homeDir, 'active-profile.json'), JSON.stringify({ configPath }), { mode: 0o600 });
+      const profilePath = join(paths.homeDir, 'active-profile.json');
+      const temporaryProfile = `${profilePath}.${randomUUID()}.tmp`;
+      await writeFile(temporaryProfile, JSON.stringify({ configPath }), { mode: 0o600, flush: true });
+      await rename(temporaryProfile, profilePath);
       if (start) {
         try {
           await start({ configPath, cwd, dataRoot: paths.dataRoot });
