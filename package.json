@@ -1,6 +1,6 @@
 {
   "name": "alemonjs-agent-link",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "AgentLink",
   "author": {
     "name": "ningmengchongshui",
@@ -46,6 +46,12 @@
   ],
   "alemonjs": {
     "config": [
+      {
+        "name": "transport",
+        "type": "string",
+        "required": false,
+        "description": "平台连接：qq-bot（默认）或 onebot；OneBot 连接参数使用顶层 onebot 配置"
+      },
       {
         "description": "Python 可执行文件；未设置时自动创建插件专用虚拟环境",
         "name": "pythonExecutable",
@@ -176,7 +182,7 @@
         "name": "groupWakeNames",
         "type": "array",
         "required": false,
-        "description": "群聊求助或呼唤关键词，默认 [帮我, 肥鱼, 大肥鱼]，消息任意位置匹配，空数组关闭"
+        "description": "群聊求助或呼唤关键词，默认含肥鱼、鲸鱼、DeepSeek、DSH、AgentLink 等称呼及求助表达，共26词；最多自定义64词，全文匹配、英文忽略大小写，空数组关闭"
       },
       {
         "name": "stateBackend",
@@ -219,5 +225,5 @@
   "bin": {
     "agent-link": "bin/agent-link.cjs"
   },
-  "gitHead": "6a230cf46bb3bbf31f7acac735c7b3d5b57042ce"
+  "gitHead": "a74706b0c360515751ebafa31f178fb2dc434c13"
 }
