@@ -1,7 +1,19 @@
-import { relative } from 'node:path';
+import packageInfo from '../package.json' with { type: 'json' };
+import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFile } from 'node:fs/promises';
 import childProcess from 'node:child_process';
+import { parse } from 'yaml';
+import { resolveOneBotConfig } from '../lib/onebot/config.js';
+
+// The framework resolves application ownership only within cwd. A standalone
+// installation may live outside the launch directory, so run from its package
+// root while preserving the caller's configuration and data paths.
+process.env.CFG_PATH = resolve(process.env.CFG_PATH || 'alemon.config.yaml');
+for (const key of ['AGENT_LINK_DATA_DIR', 'AGENT_LINK_STATUS_PATH']) {
+  if (process.env[key]) process.env[key] = resolve(process.env[key]);
+}
+process.chdir(fileURLToPath(new URL('../', import.meta.url)));
 
 // AlemonJS exposes restart but no complete stop API. Track forks in this
 // dedicated worker so shutdown can await both the app and QQ adapter on every OS.
@@ -31,9 +43,12 @@ for (const signal of ['SIGINT', 'SIGTERM', 'disconnect'])
   process.once(signal, () => {
     void shutdown();
   });
+const launchConfig = parse(await readFile(process.env.CFG_PATH || 'alemon.config.yaml', 'utf8'));
+const onebot = launchConfig?.[packageInfo.name]?.transport === 'onebot';
+if (onebot) resolveOneBotConfig(launchConfig);
 start({
   input: relative(process.cwd(), fileURLToPath(new URL('../lib/index.js', import.meta.url))),
-  platform: fileURLToPath(import.meta.resolve('@alemonjs/qq-bot')),
+  platform: onebot ? fileURLToPath(new URL('../lib/onebot/index.js', import.meta.url)) : fileURLToPath(import.meta.resolve('@alemonjs/qq-bot')),
   autoPort: true
 });
 let previous = '';

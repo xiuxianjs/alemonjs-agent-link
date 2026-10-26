@@ -1,3 +1,4 @@
+import packageInfo from '../package.json' with { type: 'json' };
 import { access, mkdir, readFile, stat, writeFile, rename } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
@@ -6,6 +7,7 @@ import { dirname, join, resolve } from 'node:path';
 import { acquireProcessLock } from './process-lock.mjs';
 import { launchPaths } from './paths.mjs';
 import { resolveDSHConfig } from '../lib/dsh/config.js';
+import { resolveOneBotConfig } from '../lib/onebot/config.js';
 import { launchRuntime } from './runtime.mjs';
 import { LineCounter, parseDocument } from 'yaml';
 
@@ -16,7 +18,7 @@ qq-bot:
   app_id: '' # QQ 机器人 AppID
   secret: '' # QQ 机器人密钥
 
-alemonjs-agent-link:
+${packageInfo.name}:
   apiKey: '' # 模型 API Key；默认使用 DeepSeek
 `;
 
@@ -34,11 +36,18 @@ export const supportsNodeVersion = (version = process.versions.node) => {
 // Redis clients, model requests or Python installation.
 export const inspectConfig = (value, options) => {
   if (!object(value)) return [check('config', 'error', '配置应为 YAML 对象，请保留各配置项的缩进。')];
-  const agent = value['alemonjs-agent-link'];
+  const agent = value[packageInfo.name];
   const qq = { ...(object(value['qq-bot']) ? value['qq-bot'] : {}), ...(object(value['@alemonjs/qq-bot']) ? value['@alemonjs/qq-bot'] : {}) };
   const checks = [];
-  const credentials = [['alemonjs-agent-link.apiKey', agent?.apiKey, false]];
-  if (object(qq.bots) && Object.keys(qq.bots).length) {
+  const credentials = [[`${packageInfo.name}.apiKey`, agent?.apiKey, false]];
+  if (agent?.transport === 'onebot') {
+    try {
+      resolveOneBotConfig(value);
+      checks.push(check('onebot', 'ok', 'OneBot 配置有效，在线状态以连接与账号核验为准。'));
+    } catch (error) {
+      checks.push(check('onebot', 'error', error.message));
+    }
+  } else if (object(qq.bots) && Object.keys(qq.bots).length) {
     for (const [id, bot] of Object.entries(qq.bots)) {
       credentials.push(['qq-bot.bots.*.secret', bot?.secret, false]);
       if (!id.trim() || (bot?.app_id && String(bot.app_id) !== id)) checks.push(check('qq-bot.bots', 'error', 'bots 的账号键需要与对应 AppID 一致。'));
@@ -60,7 +69,7 @@ export const inspectConfig = (value, options) => {
     );
   }
   try {
-    resolveDSHConfig(value, options);
+    resolveDSHConfig(agent, { ...options, hasRedis: Boolean(value.db?.redis) });
   } catch (error) {
     checks.push(check('agent-config', 'error', error.message));
   }
@@ -116,10 +125,10 @@ export const diagnose = async (options = {}) => {
   } catch (error) {
     checks.push(check('config', 'error', error.code === 'ENOENT' ? '尚无配置文件；运行启动命令会自动生成。' : '无法读取配置，请检查文件权限和 YAML 格式。'));
   }
-  const agent = object(config?.['alemonjs-agent-link']) ? config['alemonjs-agent-link'] : {};
+  const agent = object(config?.[packageInfo.name]) ? config[packageInfo.name] : {};
   let resolved;
   try {
-    resolved = resolveDSHConfig(config, { cwd, configPath, dataRoot });
+    resolved = resolveDSHConfig(config?.[packageInfo.name], { cwd, configPath, dataRoot, hasRedis: Boolean(config?.db?.redis) });
   } catch {
     /* Reported above. */
   }
@@ -214,7 +223,7 @@ export const runCLI = async (argv, { cwd = process.cwd(), write = text => proces
       return 2;
     }
     const value = parseDocument(await readFile(configPath, 'utf8')).toJS();
-    const resolved = resolveDSHConfig(value, { cwd, configPath, dataRoot: paths.dataRoot });
+    const resolved = resolveDSHConfig(value[packageInfo.name], { cwd, configPath, dataRoot: paths.dataRoot, hasRedis: Boolean(value.db?.redis) });
     const ownership = await acquireProcessLock(join(dirname(resolved.dshHomeRoot), 'launcher.lock'));
     try {
       await mkdir(paths.homeDir, { recursive: true, mode: 0o700 });
@@ -238,6 +247,10 @@ export const runCLI = async (argv, { cwd = process.cwd(), write = text => proces
     return 0;
   } catch (error) {
     if (error.code === 'ABORT_ERR') return 130;
+    if (error.code === 'ELOCKLOST') {
+      write('实例已停止。请确认数据目录没有被移动或删除，再重新启动。');
+      return 1;
+    }
     if (error.code === 'ERUNTIME' || error.code === 'ERUNTIME_TIMEOUT') {
       write(`启动未完成，请检查 QQ 授权、网络或严格沙箱配置。诊断日志：${error.logPath}`);
       return 1;

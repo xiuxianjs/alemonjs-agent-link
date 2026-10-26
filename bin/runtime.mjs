@@ -56,6 +56,17 @@ export const launchRuntime = async ({ cwd, configPath, dataRoot, runtimeRoot, wr
     rejectReady(Object.assign(new Error('Runtime readiness timed out'), { code: 'ERUNTIME_TIMEOUT', logPath: diagnostics }));
   };
   let timeout = setTimeout(timedOut, timeoutMs);
+  const ownershipWatch = setInterval(() => {
+    try {
+      ownership.assertOwned?.();
+    } catch (error) {
+      write('数据目录占用已变化，正在停止当前实例。请确认只运行一份机器人。');
+      stop();
+      if (!completed) rejectReady(error);
+      else process.exitCode = 1;
+    }
+  }, 1000);
+  ownershipWatch.unref();
   const finish = () => {
     if (!completed && qqReady && moduleReady && chatReady) {
       completed = true;
@@ -102,6 +113,7 @@ export const launchRuntime = async ({ cwd, configPath, dataRoot, runtimeRoot, wr
   });
   child.once('close', async (code, signal) => {
     clearTimeout(timeout);
+    clearInterval(ownershipWatch);
     clearTimeout(killTimer);
     process.removeListener('SIGINT', stop);
     process.removeListener('SIGTERM', stop);

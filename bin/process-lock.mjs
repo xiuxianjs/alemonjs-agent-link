@@ -1,6 +1,6 @@
 import lockfile from 'proper-lockfile';
 import { mkdir, readFile, writeFile, unlink } from 'node:fs/promises';
-import { readFileSync, unlinkSync } from 'node:fs';
+import { readFileSync, unlinkSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
@@ -37,12 +37,16 @@ export const acquireProcessLock = async path => {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const previous = await readOwner(path);
   if (previous && alive(previous.pid)) throw locked();
+  let compromised;
   const options = {
     realpath: false,
     lockfilePath: `${path}.owner`,
     stale: 5000,
     update: 1000,
-    retries: { retries: 10, factor: 1, minTimeout: 600, maxTimeout: 600 }
+    retries: { retries: 10, factor: 1, minTimeout: 600, maxTimeout: 600 },
+    onCompromised(error) {
+      compromised = error;
+    }
   };
   let unlock;
   try {
@@ -69,12 +73,24 @@ export const acquireProcessLock = async path => {
     await writeFile(path, JSON.stringify({ pid: process.pid, token }), { mode: 0o600, flush: true });
     process.once('exit', removeMarker);
     return {
+      assertOwned() {
+        try {
+          if (!compromised && !released && existsSync(options.lockfilePath) && JSON.parse(readFileSync(path, 'utf8')).token === token) return;
+        } catch {
+          /* Missing or replaced ownership. */
+        }
+        throw Object.assign(new Error('实例锁已丢失，已停止使用该数据目录。'), { code: 'ELOCKLOST' });
+      },
       async release() {
         if (released) return;
         released = true;
         process.removeListener('exit', removeMarker);
         removeMarker();
-        await unlock();
+        try {
+          await unlock();
+        } catch (error) {
+          if (error.code !== 'ERELEASED' && error.code !== 'ECOMPROMISED') throw error;
+        }
       }
     };
   } catch (error) {

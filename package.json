@@ -1,6 +1,6 @@
 {
   "name": "alemonjs-agent-link",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "description": "AgentLink",
   "author": {
     "name": "ningmengchongshui",
@@ -22,6 +22,9 @@
   "exports": {
     ".": {
       "import": "./lib/index.js"
+    },
+    "./onebot": {
+      "import": "./lib/onebot/index.js"
     },
     "./package": "./package.json"
   },
@@ -205,9 +208,7 @@
     "url": "https://github.com/xiuxianjs/agent-link.git"
   },
   "dependencies": {
-    "@alemonjs/db": "^0.0.21",
-    "@alemonjs/qq-bot": "^2.1.41",
-    "alemonjs": "^2.1.114",
+    "ws": "8.18.1",
     "proper-lockfile": "^4.1.2",
     "qrcode": "^1.5.4",
     "yaml": "^2.9.1"
@@ -218,5 +219,5 @@
   "bin": {
     "agent-link": "bin/agent-link.cjs"
   },
-  "gitHead": "b23881960b2312ffc81e6c4c3ee4eff1d5c85659"
+  "gitHead": "6a230cf46bb3bbf31f7acac735c7b3d5b57042ce"
 }
