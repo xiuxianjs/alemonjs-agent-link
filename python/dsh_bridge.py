@@ -100,6 +100,22 @@ def tool_policy_patch(capabilities: dict) -> str:
     }
     return ''.join(f'- id: {tool_id}\n  disabled: {str(disabled[tool_id]).lower()}\n' for tool_id in (*TOOL_IDS, *PERMANENTLY_DISABLED_TOOL_IDS))
 
+def framework_endpoint(value):
+    if value is None: return None
+    if not isinstance(value, dict) or set(value) != {'url', 'token'}: raise ValueError('invalid framework endpoint')
+    if not isinstance(value['url'], str) or not re.fullmatch(r'http://127\.0\.0\.1:[0-9]{1,5}/mcp', value['url']): raise ValueError('invalid framework url')
+    port = urlparse(value['url']).port
+    if not port or port > 65535 or not isinstance(value['token'], str) or not re.fullmatch(r'[0-9a-f]{64}', value['token']): raise ValueError('invalid framework token')
+    return dict(value)
+
+def framework_patch(port, token):
+    # JSON strings are valid YAML scalars; never interpolate user prompt text.
+    url = f'http://127.0.0.1:{port}/internal/framework/{token}'
+    return ('- insert:\n    - id: agent-link-framework-mcp\n      name: "@deepseek-ai/dsh-mcp-client"\n'
+            '      config:\n        serverName: framework\n        transport: streamable-http\n'
+            f'        url: {json.dumps(url)}\n        headers:\n          Authorization: "Bearer {token}"\n'
+            '        toolCallTimeoutMs: 30000\n        failOnStartupError: true\n')
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     """The model credential must never follow a provider-controlled redirect."""
     def redirect_request(self, _req, _fp, _code, _msg, _headers, _newurl):
@@ -310,6 +326,8 @@ class Worker:
         if RUNTIME_PATH is None: raise WorkerError('DSH runtime unavailable')
         self.key, self.port, self.capabilities = key, port, capabilities
         self.proxy_token = os.urandom(32).hex()
+        self.framework = None
+        self.framework_enabled = False
         self.lock = threading.Lock()
         self.process: subprocess.Popen[str] | None = None
         self.last_used = time.monotonic()
@@ -331,7 +349,7 @@ class Worker:
     def start(self) -> None:
         if self.process and self.process.poll() is None: return
         self.runtime_dir.mkdir(parents=True, exist_ok=True); self.dsh_home.mkdir(parents=True, exist_ok=True)
-        self.policy_patch.write_text(tool_policy_patch(self.capabilities), encoding='utf-8')
+        self.policy_patch.write_text(tool_policy_patch(self.capabilities) + (framework_patch(self.port, self.proxy_token) if self.framework_enabled else ''), encoding='utf-8')
         # Do not inherit parent env: the actual model key stays only in this bridge.
         env = {
             'PATH': '/usr/bin:/bin', 'LANG': 'en_US.UTF-8', 'PYTHONIOENCODING': 'utf-8',
@@ -400,33 +418,45 @@ class Worker:
             if time.monotonic() - self.last_used >= WORKER_IDLE_SECONDS: discard_worker(self.key)
         self.idle_timer = threading.Timer(WORKER_IDLE_SECONDS, close_if_idle); self.idle_timer.daemon = True; self.idle_timer.start()
 
-    def run(self, message: str, session_id: str, on_content) -> dict:
+    def run(self, message: str, session_id: str, on_content, framework=None) -> dict:
         with self.lock:
-            self.start(); self.last_used = time.monotonic()
-            assert self.process and self.process.stdin and self.process.stdout
-            self.process.stdin.write(json.dumps({'type': 'chat', 'message': message, 'sessionId': session_id}, ensure_ascii=False) + '\n'); self.process.stdin.flush()
-            deadline = time.monotonic() + WORKER_TIMEOUT_SECONDS
-            while True:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise WorkerTimeout('sandbox worker timed out')
-                try:
-                    line = self.stdout_queue.get(timeout=remaining)
-                except queue.Empty:
-                    raise WorkerTimeout('sandbox worker timed out')
-                if line is None: raise WorkerError('sandbox worker exited')
-                try: event = json.loads(line)
-                except json.JSONDecodeError: continue
-                self.last_event_type = str(event.get('type', 'unknown'))
-                if event.get('type') == 'phase': self.last_phase = str(event.get('phase', 'unknown'))
-                elif event.get('type') == 'ready': self.last_phase = 'ready'
-                if event.get('type') == 'content': on_content(str(event.get('content', '')))
-                elif event.get('type') == 'result': self.schedule_idle_close(); return event
-                elif event.get('type') in {'error', 'fatal'}:
-                    # Worker details can contain prompt or model text. Keep them
-                    # on the authenticated pipe only; neither bridge nor Node
-                    # logs may serialize them.
-                    raise WorkerReportedError(event.get('code'))
+            enabled = framework is not None
+            if self.framework_enabled != enabled:
+                self.stop()
+            self.framework_enabled = enabled
+            self.framework = framework
+            try:
+                return self._run(message, session_id, on_content)
+            finally:
+                self.framework = None
+
+    def _run(self, message: str, session_id: str, on_content) -> dict:
+        # Caller holds the worker lock for the whole turn, including MCP callbacks.
+        self.start(); self.last_used = time.monotonic()
+        assert self.process and self.process.stdin and self.process.stdout
+        self.process.stdin.write(json.dumps({'type': 'chat', 'message': message, 'sessionId': session_id}, ensure_ascii=False) + '\n'); self.process.stdin.flush()
+        deadline = time.monotonic() + WORKER_TIMEOUT_SECONDS
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise WorkerTimeout('sandbox worker timed out')
+            try:
+                line = self.stdout_queue.get(timeout=remaining)
+            except queue.Empty:
+                raise WorkerTimeout('sandbox worker timed out')
+            if line is None: raise WorkerError('sandbox worker exited')
+            try: event = json.loads(line)
+            except json.JSONDecodeError: continue
+            self.last_event_type = str(event.get('type', 'unknown'))
+            if event.get('type') == 'phase': self.last_phase = str(event.get('phase', 'unknown'))
+            elif event.get('type') == 'ready': self.last_phase = 'ready'
+            if event.get('type') == 'content': on_content(str(event.get('content', '')))
+            elif event.get('type') == 'result': self.schedule_idle_close(); return event
+            elif event.get('type') in {'error', 'fatal'}:
+                # Worker details can contain prompt or model text. Keep them
+                # on the authenticated pipe only; neither bridge nor Node
+                # logs may serialize them.
+                raise WorkerReportedError(event.get('code'))
 
 def get_worker(key: str, port: int, capabilities: dict) -> Worker:
     with WORKERS_LOCK:
@@ -509,6 +539,7 @@ class Handler(BaseHTTPRequestHandler):
             if target.exists(): shutil.rmtree(target)
         self.send_response(HTTPStatus.NO_CONTENT); self.end_headers()
     def do_POST(self):
+        if self.path.startswith('/internal/framework/'): self.proxy_framework(); return
         if self.path.startswith('/internal/egress/'): self.proxy_egress(); return
         if self.path != '/v1/chat' or not self.authorized(): self.send_error(HTTPStatus.UNAUTHORIZED); return
         error = validate_preflight()
@@ -521,6 +552,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             body = self.json_body(); session_id, prompt = body['sessionId'], body['message']; key = group_key(session_id); capabilities = valid_capabilities(body.get('capabilities'))
             if isinstance(prompt, str) and len(json.dumps(body).encode()) > MAX_BODY: raise ValueError('text request too large')
+            framework = framework_endpoint(body.get('framework'))
             prompt = normalize_chat_input(prompt)
             if not prompt or not capabilities or not capabilities['chat'] or blocked(chat_input_text(prompt), INPUT_BLOCKED): raise ValueError('invalid message')
         except (KeyError, ValueError, json.JSONDecodeError): self.send_error(HTTPStatus.BAD_REQUEST); return
@@ -534,7 +566,7 @@ class Handler(BaseHTTPRequestHandler):
                 streamed = True
         try:
             worker = get_worker(key, self.server.server_port, capabilities)
-            result = worker.run(trusted_prompt(prompt, capabilities) if isinstance(prompt, str) else [{'type': 'text', 'text': trusted_prompt('', capabilities)}, *prompt], session_id, on_content)
+            result = worker.run(trusted_prompt(prompt, capabilities) if isinstance(prompt, str) else [{'type': 'text', 'text': trusted_prompt('', capabilities)}, *prompt], session_id, on_content, framework)
             content = str(result.get('content') or '')
             if not content.strip():
                 # Safe operational signal: event metadata contains no prompt,
@@ -558,6 +590,31 @@ class Handler(BaseHTTPRequestHandler):
             send_sse(self, {'type': 'error', 'message': 'DSH Agent is busy'})
         except Exception as error:
             discard_worker(key); print(f'worker failed key={key[:12]} error={error}', file=sys.stderr); send_sse(self, {'type': 'error', 'message': 'DSH Agent execution failed'})
+    def proxy_framework(self):
+        token = self.path.removeprefix('/internal/framework/')
+        with WORKERS_LOCK: worker = next((item for item in WORKERS.values() if item.proxy_token == token), None)
+        endpoint = worker.framework if worker else None
+        if not endpoint or self.headers.get('Authorization') != f'Bearer {token}': self.send_error(HTTPStatus.UNAUTHORIZED); return
+        try:
+            length = int(self.headers.get('Content-Length', '0'))
+            if length < 1 or length > 65536: raise ValueError('size')
+            body = self.rfile.read(length)
+            request = urllib.request.Request(endpoint['url'], data=body, headers={
+                'Authorization': f"Bearer {endpoint['token']}", 'Content-Type': 'application/json',
+                'Accept': 'application/json, text/event-stream'}, method='POST')
+            try:
+                response = urllib.request.build_opener(NoRedirect()).open(request, timeout=30)
+            except urllib.error.HTTPError as error:
+                response = error
+            with response:
+                data = read_bounded(response, 262144)
+                self.send_response(response.status)
+                self.send_header('Content-Type', response.headers.get('Content-Type', 'application/json'))
+                self.end_headers(); self.wfile.write(data)
+        except (ValueError, OSError, urllib.error.URLError):
+            try: self.send_error(HTTPStatus.BAD_GATEWAY)
+            except OSError: pass
+
     def proxy_egress(self):
         _, _, suffix = self.path.partition('/internal/egress/')
         token, _, tail = suffix.partition('/')
