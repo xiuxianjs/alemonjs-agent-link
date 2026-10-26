@@ -58,6 +58,7 @@ PROFILE_CHECK_LOCK = threading.Lock()
 PROFILE_CHECK: tuple[bool, str, float, tuple[str, int, int]] | None = None
 
 try:
+    from deepseek_harness import DeepSeekHarness
     from deepseek_harness_runtime import bundled_runtime_path
     RUNTIME_PATH = bundled_runtime_path().resolve()
     SDK_ERROR = None

@@ -1,35 +1,32 @@
 # AgentLink
 
-在 QQ 群里提供受限的 AI 对话。群成员通过 @机器人或 `/chat` 发起提问；每个群拥有独立会话和隔离 Worker。
+在 QQ 群和私聊中提供受限的 AI 对话，内置大肥鱼文字人设。群成员通过 @机器人或 `/chat` 发起提问；每个群拥有独立会话和隔离 Worker。
 
 默认群聊支持联网查询；主人可为指定群分别开启文件和终端。所有工具仍受群级隔离工作区限制，子代理与工作流始终关闭。
 
 ## 快速开始
 
-默认 `runtimeMode: auto`：优先启用沙箱；本地环境准备失败时，自动降级为 Node 直连模型的纯聊天模式。纯聊天可在 Windows、macOS、Linux 上运行，不需要 Python 或 Bubblewrap，但仍需要 Redis、有效模型凭证和兼容 Chat Completions 的 HTTPS 模型服务。降级时网页、文件和终端工具均关闭。
+默认 `runtimeMode: auto`：优先启用沙箱；本地环境准备失败时，自动降级为 Node 直连模型的纯聊天模式。
 
-**运行条件：** macOS 或 Linux、Node.js、Docker（或一个可用的 Redis）、QQ Bot 配置。macOS 需要系统自带的 `sandbox-exec`；Linux 需要 Bubblewrap（`bwrap`）。Windows 请在 WSL2 内运行完整服务，不支持原生 Windows Worker。首次启动时会自动创建插件专用 Python 环境并安装 DSH SDK。
+**运行条件：**
 
-```bash
-yarn install
-docker compose up -d redis
-yarn dev --login qq-bot
-```
+macOS 或 Linux、Node.js、Docker（或一个可用的 Redis）、QQ Bot 配置。
 
-在启动前，将 QQ Bot、Redis 和主人账号配置写入本机的 `alemon.config.yaml`。该文件包含密钥，已经被 Git 忽略；不要提交、截图或复制到公开环境。配置示例与所有可调参数见 [配置指南](docs/config.md)。
+macOS 需要系统自带的 `sandbox-exec`；
+
+Linux 需要 Bubblewrap（`bwrap`）。
+
+Windows 请在 WSL2 内运行完整服务，不支持原生 Windows Worker。首次启动时会自动创建插件专用 Python 环境并安装 DSH SDK。
+
+在启动前，将 QQ Bot、Redis 和主人账号配置写入本机的 `alemon.config.yaml`。配置示例与所有可调参数见 [配置指南](docs/config.md)。
 
 在 `alemon.config.yaml` 的 `alemonjs-agent-link` 中设置 `apiKey`、可选 `baseUrl` 与 `model` 后启动。发送 `/agentstatus` 确认服务已就绪。
 
-生产环境先构建再启动：
-
-```bash
-yarn build
-yarn start --login qq-bot
-```
-
-不要将带热重载的 `yarn dev` 用作生产进程。
-
 ## 使用方法
+
+### 私聊设置主人
+
+私聊机器人发送 `/我是主人`，到机器人服务端日志查看 6 位验证码，再私聊回复 `/我的主人 验证码` 或 `/我是主人 验证码`。只有不带参数的 `/我是主人` 会重新申请验证码。验证码仅保存在内存中，5 分钟有效，最多尝试 5 次；重新申请、验证成功或重启服务后旧验证码失效。验证通过后使用框架配置接口将当前用户加入 `master_key`，保存到 `alemon.config.yaml` 并立即生效，保留已有主人。
 
 ### 群成员
 
@@ -59,7 +56,7 @@ yarn start --login qq-bot
 | 配置模型凭证       | 修改 `alemon.config.yaml` 的 `alemonjs-agent-link.apiKey` 后重启     |
 | 查看模型           | `/agentmodels`、`/agentmodel`                                        |
 | 查看完整状态       | `/agentstatus`                                                       |
-| 私聊使用 Agent     | `/chat 你的问题`                                                     |
+| 私聊使用 Agent     | 直接发送文字，或 `/chat 你的问题`                                    |
 | 彻底删除指定群数据 | 在目标群中执行 `/agentpurge`，再于 60 秒内执行 `/agentpurge confirm` |
 
 ## 运行模型
@@ -80,9 +77,8 @@ AgentLink 仅支持**单 Node 进程**连接同一个 QQ 机器人。不要同�
 - [运维手册](docs/operations.md)：部署、状态检查和故障处理。
 - [安全与数据](docs/security.md)：沙箱边界、数据生命周期和凭证处理。
 
-## 验证
+主人私聊支持直接发文字、`/new` 清空会话、`/cancel` 取消请求。纯聊天模式默认保留最近 10 轮私聊历史，最多 24 小时。普通用户私聊默认关闭，可通过 `privateChatAccess: all` 开放，且只允许聊天。详见[大肥鱼与私聊配置](docs/config.md#大肥鱼与私聊)。
 
-```bash
-yarn test
-npx eslint src
-```
+群里也可发送“大肥鱼，今天好累”唤醒。私聊支持 `/记住 内容`、`/记忆`、`/忘记 编号`、`/忘记全部`，管理自己的长期资料。能力对标与下一步验收见[大肥鱼能力差距](docs/dafeiyu-roadmap.md)。
+
+图片与语音输入、`/语音 问题` 和 `/表情 标签` 已提供配置入口，见[媒体能力](docs/media.md)。未配置的输入能力会按角色回复“看不懂，就当是夸我了”。

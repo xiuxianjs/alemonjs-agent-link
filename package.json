@@ -1,6 +1,6 @@
 {
   "name": "alemonjs-agent-link",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "AgentLink",
   "author": {
     "name": "ningmengchongshui",
@@ -28,41 +28,12 @@
     "dev": "npx lvy app.ts",
     "start": "node index.js",
     "view": "npx lvy dev --jsxp",
-    "build": "yarn install --frozen-lockfile && npx lvy build",
-    "bundle": "yarn install --frozen-lockfile && npx lvy build",
     "test": "npx lvy build && npx eslint src && node --test --test-force-exit test/*.test.mjs && python3 -m unittest scripts/test_dsh_bridge.py",
     "eslint": "eslint src --fix",
     "link-codex": "ln -s \"$PWD/.github/skills\" \"$PWD/.codex/skills\"",
     "format": "prettier --write .",
     "check-format": "git diff --exit-code",
-    "sync-qq-commands": "node scripts/sync-qq-command-panels.mjs",
-    "prepare": "husky"
-  },
-  "devDependencies": {
-    "@alemonjs/discord": "^2.1.25",
-    "@alemonjs/process": "^0.0.8",
-    "@alemonjs/qq-bot": "^2.1.35",
-    "@eslint/js": "^9.14.0",
-    "@types/node": "22",
-    "@types/uuid": "^10.0.0",
-    "@types/ws": "8.18.1",
-    "alemonjs": "^2.1.103",
-    "cssnano": "^7.0.6",
-    "eslint": "^9.14.0",
-    "eslint-config-prettier": "^9.1.0",
-    "eslint-plugin-prettier": "^5.2.1",
-    "eslint-plugin-react": "^7.37.2",
-    "eslint-plugin-unused-imports": "^4.1.4",
-    "globals": "^16.2.0",
-    "husky": "^9.1.7",
-    "jsxp": "^1.4.0",
-    "lvyjs": "^0.3.0-alpha.5",
-    "prettier": "^3.5.3",
-    "sass": "^1.83.0",
-    "tailwindcss": "^3",
-    "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "typescript-eslint": "^8.19.1",
-    "ws": "8.18.1"
+    "sync-qq-commands": "node scripts/sync-qq-command-panels.mjs"
   },
   "keywords": [
     "alemonjs"
@@ -158,6 +129,48 @@
         "name": "recentChatSummaryMaxChars",
         "required": false,
         "type": "number"
+      },
+      {
+        "name": "persona",
+        "type": "string",
+        "description": "人设：dafeiyu（默认）或 assistant；自定义提示词优先",
+        "required": false
+      },
+      {
+        "name": "privateChatAccess",
+        "type": "string",
+        "description": "私聊权限：owner（默认）或 all；普通用户仅聊天",
+        "required": false
+      },
+      {
+        "name": "privateAutoReply",
+        "type": "boolean",
+        "description": "私聊普通文字自动回复，默认 true",
+        "required": false
+      },
+      {
+        "name": "privateHistoryMaxTurns",
+        "type": "number",
+        "description": "纯聊天私聊记忆轮数，默认 10，0 关闭",
+        "required": false
+      },
+      {
+        "name": "privateHistoryTtlSeconds",
+        "type": "number",
+        "description": "纯聊天私聊记忆有效秒数，默认 86400",
+        "required": false
+      },
+      {
+        "name": "privateHistoryMaxChars",
+        "type": "number",
+        "description": "纯聊天私聊历史字符预算，默认 12000",
+        "required": false
+      },
+      {
+        "name": "groupWakeNames",
+        "type": "array",
+        "required": false,
+        "description": "群聊开头唤醒称呼，默认 [大肥鱼]，空数组关闭"
       }
     ]
   },
@@ -170,8 +183,8 @@
     "type": "git",
     "url": "https://github.com/xiuxianjs/agent-link.git"
   },
-  "packageManager": "yarn@1.22.22",
   "dependencies": {
-    "@alemonjs/db": "^0.0.20"
-  }
+    "@alemonjs/db": "^0.0.21"
+  },
+  "gitHead": "44832b8c02d5e4bbc377a45ec8c3095207fca922"
 }
