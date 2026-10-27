@@ -1,6 +1,6 @@
 {
   "name": "alemonjs-agent-link",
-  "version": "0.0.13",
+  "version": "0.0.14",
   "description": "AgentLink",
   "author": {
     "name": "ningmengchongshui",
@@ -201,6 +201,18 @@
         "type": "array",
         "required": false,
         "description": "Python 依赖 HTTPS 来源列表；按顺序切换，记住成功来源"
+      },
+      {
+        "name": "aiEnabled",
+        "type": "boolean",
+        "required": false,
+        "description": "AI 请求总开关，默认 true；主人可通过 /关闭 原因 和 /开启 修改"
+      },
+      {
+        "name": "aiDisabledReason",
+        "type": "string",
+        "required": false,
+        "description": "AI 关闭后直接呼唤时的提示原因，最多500字"
       }
     ]
   },
@@ -226,5 +238,5 @@
   "bin": {
     "agent-link": "bin/agent-link.cjs"
   },
-  "gitHead": "2694209fb10bf825665162927dab6bcdd07b683f"
+  "gitHead": "05952da3e8eff784e2d87fe3de1aecae66174794"
 }
