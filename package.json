@@ -1,6 +1,6 @@
 {
   "name": "alemonjs-agent-link",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "description": "AgentLink",
   "author": {
     "name": "ningmengchongshui",
@@ -38,12 +38,22 @@
     "format": "prettier --write .",
     "check-format": "git diff --exit-code",
     "sync-qq-commands": "node scripts/sync-qq-command-panels.mjs",
+    "precommit": "lint-staged",
     "init": "node bin/agent-link.cjs init",
     "doctor": "node bin/agent-link.cjs doctor"
   },
   "keywords": [
     "alemonjs"
   ],
+  "lint-staged": {
+    "*.{js,ts,tsx}": [
+      "prettier --write",
+      "eslint --fix --max-warnings=0 --no-warn-ignored"
+    ],
+    "*.{json,md,yml,yaml,css,scss,html}": [
+      "prettier --write"
+    ]
+  },
   "alemonjs": {
     "config": [
       {
@@ -151,7 +161,7 @@
       {
         "name": "privateChatAccess",
         "type": "string",
-        "description": "私聊权限：owner（默认）或 all；普通用户仅聊天",
+        "description": "私聊权限：owner（默认）或 all；普通用户默认可聊天、联网查询及操作个人文件目录，终端禁止",
         "required": false
       },
       {
@@ -238,5 +248,5 @@
   "bin": {
     "agent-link": "bin/agent-link.cjs"
   },
-  "gitHead": "05952da3e8eff784e2d87fe3de1aecae66174794"
+  "gitHead": "5ae8d1f2eb347f9226537fa9c3170b7976564069"
 }

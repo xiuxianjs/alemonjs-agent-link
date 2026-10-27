@@ -26,7 +26,9 @@
   disabled: true
 - id: tool-goal
   disabled: true
-- id: tool-ralph
+- id: tool-working-directory
+  disabled: true
+- id: tool-plugin-manager
   disabled: true
 - id: tool-web
   disabled: true

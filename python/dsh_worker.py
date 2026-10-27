@@ -48,11 +48,10 @@ def main():
         model=os.environ.get('DSH_MODEL', 'deepseek-v4-flash'), api_key=os.environ['DSH_PROXY_TOKEN'],
         base_url=os.environ['DSH_PROXY_BASE_URL'], patches=(os.environ['DSH_CHAT_ONLY_PATCH'],),
         request_timeout_seconds=float(os.environ.get('DSH_WORKER_TIMEOUT_SECONDS', '115')))
-    # The Python SDK has no resume_session API: harness.run() calls
-    # start_session() every time. Keep Session objects alive in this isolated
-    # worker, and namespace physical SDK sessions per worker lifetime so an
-    # old DSH home can never collide after crash recovery.
-    worker_epoch = uuid.uuid4().hex
+    # Keep live sessions within one process. Framework turns restore native
+    # session data and explicitly resume through the supported SDK API.
+    # The epoch is owned by the bridge and stays stable during safe turn rotation.
+    worker_epoch = os.environ.get('DSH_SESSION_EPOCH') or uuid.uuid4().hex
     sessions = {}
     # These events carry no request content and are consumed by the bridge only.
     # They make a timeout diagnosable without exposing worker stderr to logs.
@@ -74,7 +73,9 @@ def main():
             logical_session_id = command['sessionId']
             session = sessions.get(logical_session_id)
             if session is None:
-                session = harness.start_session(f'{logical_session_id}:w{worker_epoch}')
+                physical_session_id = f'{logical_session_id}:w{worker_epoch}'
+                session = (harness.resume_session(physical_session_id) if command.get('resume') is True
+                           else harness.start_session(physical_session_id))
                 sessions[logical_session_id] = session
             emit({'type': 'phase', 'phase': 'harness-run'})
             result = session.run(command['message'], on_notification=on_notification)
