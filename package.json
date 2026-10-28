@@ -1,6 +1,6 @@
 {
   "name": "alemonjs-agent-link",
-  "version": "0.0.15",
+  "version": "0.0.16",
   "description": "AgentLink",
   "author": {
     "name": "ningmengchongshui",
@@ -101,6 +101,12 @@
       {
         "description": "单条 QQ 回复最大字符数",
         "name": "maxMessageLength",
+        "required": false,
+        "type": "number"
+      },
+      {
+        "description": "分条回复之间的打字间隔（毫秒），默认 250",
+        "name": "bubbleDelayMs",
         "required": false,
         "type": "number"
       },
@@ -248,5 +254,5 @@
   "bin": {
     "agent-link": "bin/agent-link.cjs"
   },
-  "gitHead": "5ae8d1f2eb347f9226537fa9c3170b7976564069"
+  "gitHead": "cd0afa1f99c3a9a72ea6789446c661990b358e41"
 }
