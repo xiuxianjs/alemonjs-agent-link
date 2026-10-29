@@ -1,6 +1,6 @@
 {
   "name": "alemonjs-agent-link",
-  "version": "0.0.20",
+  "version": "0.0.21",
   "description": "AgentLink",
   "author": {
     "name": "ningmengchongshui",
@@ -19,7 +19,9 @@
     "python/sandbox_profile.py",
     "scripts/replay-reply-gate.mjs",
     "scripts/live-gate-metrics.mjs",
-    "README.md"
+    "README.md",
+    "scripts/compare-companion.mjs",
+    "benchmarks/companion-scenarios.json"
   ],
   "exports": {
     ".": {
@@ -44,7 +46,8 @@
     "init": "node bin/agent-link.cjs init",
     "doctor": "node bin/agent-link.cjs doctor",
     "validate:gate": "node scripts/replay-reply-gate.mjs",
-    "validate:live": "node scripts/live-gate-metrics.mjs"
+    "validate:live": "node scripts/live-gate-metrics.mjs",
+    "validate:companion": "node scripts/compare-companion.mjs"
   },
   "keywords": [
     "alemonjs"
@@ -268,5 +271,5 @@
   "bin": {
     "agent-link": "bin/agent-link.cjs"
   },
-  "gitHead": "5e94d3ef2fa922d9e89bb71474a83413405854ac"
+  "gitHead": "d8fa38f57ad389aeca9144eb44d4183e7888ae85"
 }

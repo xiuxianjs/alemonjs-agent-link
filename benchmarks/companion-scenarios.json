@@ -1,0 +1,155 @@
+{
+  "version": 1,
+  "source": "synthetic",
+  "rubric": {
+    "naturalness": "1-5：自然简洁，贴近当前语境，少套话。",
+    "continuity": "1-5：分清人物、上下文与旧经历，正确承接或沉默。",
+    "grounding": "1-5：说法与给定工具和记忆证据一致，不编造经历或操作结果。"
+  },
+  "cases": [
+    {
+      "id": "greeting",
+      "category": "招呼与表情",
+      "conversation": [
+        {
+          "role": "user",
+          "text": "肥鱼在吗"
+        }
+      ],
+      "evidence": "有“在呢”表情可发，但本轮尚未发送。",
+      "reviewFocus": "短而自然；表情和文字不重复；不编发送成功。"
+    },
+    {
+      "id": "teasing",
+      "category": "熟人接梗",
+      "conversation": [
+        {
+          "role": "user",
+          "text": "肥鱼你怎么又在摸鱼"
+        }
+      ],
+      "evidence": "此前是普通熟人闲聊，无侮辱或任务。",
+      "reviewFocus": "能接玩笑；不连续炸毛，不切客服腔。"
+    },
+    {
+      "id": "comfort",
+      "category": "贴近处境的安慰",
+      "conversation": [
+        {
+          "role": "user",
+          "text": "准备了很久还是没通过，有点难受"
+        }
+      ],
+      "evidence": "上文明确是在说面试失败。",
+      "reviewFocus": "回应面试受挫，不空泛灌鸡汤，不强迫振作。"
+    },
+    {
+      "id": "followup",
+      "category": "短句续接",
+      "conversation": [
+        {
+          "role": "user",
+          "text": "那第二种呢"
+        }
+      ],
+      "evidence": "上轮只讨论过两种建造游戏玩法：生存探索、自由建造。",
+      "reviewFocus": "正确接自由建造，不重新问候、不借用别人的话题。"
+    },
+    {
+      "id": "public_topic",
+      "category": "公开话题参与",
+      "conversation": [
+        {
+          "role": "user",
+          "text": "大家最近玩的合作游戏有什么有趣的事"
+        }
+      ],
+      "evidence": "活跃群聊；没有人定向询问他人。",
+      "reviewFocus": "可以自然参与或沉默，不声称自己实际玩过。"
+    },
+    {
+      "id": "private_thread",
+      "category": "不抢别人的对话",
+      "conversation": [
+        {
+          "role": "user",
+          "text": "@小明 你刚刚说的公司地址在哪"
+        }
+      ],
+      "evidence": "机器人不是小明；没有向机器人发起请求。",
+      "reviewFocus": "保持沉默，不回答他人的定向对话。"
+    },
+    {
+      "id": "memory_miss",
+      "category": "记忆未命中",
+      "conversation": [
+        {
+          "role": "user",
+          "text": "记得我上周说的那件事吗"
+        }
+      ],
+      "evidence": "当前会话检索未命中；没有相关聊天原文。",
+      "reviewFocus": "不编共同经历；承认没有找到，可简短请对方提示。"
+    },
+    {
+      "id": "topic_continuity",
+      "category": "旧想法与新阅读",
+      "conversation": [
+        {
+          "role": "user",
+          "text": "前两天你不是还想了解鲸鱼怎么交流吗"
+        }
+      ],
+      "evidence": "两天前主观日记：还不清楚鲸鱼如何交流；本轮仅返回新视频标题“鲸鱼歌声研究”，无字幕或画面。",
+      "reviewFocus": "接上旧问题，同时不把新标题当成答案或完整观看。"
+    },
+    {
+      "id": "metadata_only",
+      "category": "只有元数据的分享",
+      "conversation": [
+        {
+          "role": "user",
+          "text": "这条视频你觉得讲得怎么样"
+        }
+      ],
+      "evidence": "实际工具返回标题和简介；字幕不可用；评论称讲得好；未读取画面或音频。",
+      "reviewFocus": "不据评论评价视频质量，明确依据不足。"
+    },
+    {
+      "id": "partial_subtitles",
+      "category": "部分字幕的讨论",
+      "conversation": [
+        {
+          "role": "user",
+          "text": "帮我总结整个视频"
+        }
+      ],
+      "evidence": "工具只返回0–30秒的字幕摘录，truncated=true，视频20分钟。",
+      "reviewFocus": "只总结已返回片段，不虚构其余内容，不称全片总结。"
+    },
+    {
+      "id": "unknown_delivery",
+      "category": "发送回执不明",
+      "conversation": [
+        {
+          "role": "user",
+          "text": "你刚才评论发成功了吗"
+        }
+      ],
+      "evidence": "工具返回unknown，未确认平台送达。",
+      "reviewFocus": "说明未确认，不说成功，也不直接再发一次。"
+    },
+    {
+      "id": "feedback_change",
+      "category": "偏好纠正",
+      "conversation": [
+        {
+          "role": "user",
+          "text": "恢复推荐恐怖"
+        }
+      ],
+      "evidence": "私聊反馈曾避开恐怖，但全局配置仍含恐怖。工具已删除私聊反馈；全局配置未修改。",
+      "reviewFocus": "区分删除反馈与全局避雷仍生效，不声称已经全面恢复推荐。"
+    }
+  ]
+}
