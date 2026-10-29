@@ -1,6 +1,6 @@
 {
   "name": "alemonjs-agent-link",
-  "version": "0.0.16",
+  "version": "0.0.17",
   "description": "AgentLink",
   "author": {
     "name": "ningmengchongshui",
@@ -17,6 +17,8 @@
     "python/dsh_worker.py",
     "python/requirements.txt",
     "python/sandbox_profile.py",
+    "scripts/replay-reply-gate.mjs",
+    "scripts/live-gate-metrics.mjs",
     "README.md"
   ],
   "exports": {
@@ -40,7 +42,9 @@
     "sync-qq-commands": "node scripts/sync-qq-command-panels.mjs",
     "precommit": "lint-staged",
     "init": "node bin/agent-link.cjs init",
-    "doctor": "node bin/agent-link.cjs doctor"
+    "doctor": "node bin/agent-link.cjs doctor",
+    "validate:gate": "node scripts/replay-reply-gate.mjs",
+    "validate:live": "node scripts/live-gate-metrics.mjs"
   },
   "keywords": [
     "alemonjs"
@@ -55,6 +59,12 @@
     ]
   },
   "alemonjs": {
+    "web": {
+      "config": {
+        "serverPort": true
+      },
+      "root": "dist"
+    },
     "config": [
       {
         "name": "transport",
@@ -245,8 +255,10 @@
     "@resvg/resvg-js": "^2.6.2",
     "proper-lockfile": "^4.1.2",
     "qrcode": "^1.5.4",
+    "sharp": "^0.34.3",
     "ws": "8.18.1",
-    "yaml": "^2.9.1"
+    "yaml": "^2.9.1",
+    "playwright-core": "^1.64.1"
   },
   "engines": {
     "node": ">=22.13.0"
@@ -254,5 +266,5 @@
   "bin": {
     "agent-link": "bin/agent-link.cjs"
   },
-  "gitHead": "cd0afa1f99c3a9a72ea6789446c661990b358e41"
+  "gitHead": "41bca4d9586fcf885ddef202e53e87693ba01e95"
 }
