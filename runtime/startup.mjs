@@ -1,3 +1,4 @@
+import { findExecutable, inspectBubblewrapInstaller } from '../lib/dsh/sandbox-environment.js';
 import { agentPlatformIssue } from '../lib/dsh/platform-preflight.js';
 import packageInfo from '../package.json' with { type: 'json' };
 import { access, mkdir, readFile, stat, writeFile, rename } from 'node:fs/promises';
@@ -151,6 +152,21 @@ export const diagnose = async (options = {}) => {
   );
   if (agent.runtimeMode !== 'chat-only') {
     const issue = agentPlatformIssue();
+    if (!issue && process.platform === 'linux') {
+      if (process.env.DSH_BWRAP_EXECUTABLE) {
+        checks.push(check('sandbox-install', 'info', '使用 DSH_BWRAP_EXECUTABLE 指定的沙箱；启动时验证该文件与隔离能力。'));
+      } else if (await findExecutable('bwrap')) {
+        checks.push(check('sandbox-install', 'info', '已找到 Bubblewrap；实际命名空间权限仍需启动验证。'));
+      } else {
+        const plan = await inspectBubblewrapInstaller();
+        const message = !plan
+          ? '未找到 Bubblewrap 或受支持的包管理器，需要管理员安装 bubblewrap。'
+          : !plan.root && !plan.sudo
+            ? `没有 root 权限且未安装 sudo，需要管理员执行：${plan.manual}`
+            : `未找到 Bubblewrap，启动后尝试通过 ${plan.name} 静默安装；sudo 是否允许免密执行将在安装时确认。`;
+        checks.push(check('sandbox-install', 'info', message));
+      }
+    }
     checks.push(check('agent-platform', issue ? (agent.runtimeMode === 'sandbox' ? 'error' : 'info') : 'ok', issue || '系统版本与架构符合 Agent 运行包要求；安装、沙箱权限与模型连接仍需启动验证。'));
   }
   return { ok: !checks.some(item => item.status === 'error'), configPath, dataRoot, platform: process.platform, arch: process.arch, checks };
@@ -247,7 +263,12 @@ export const runCLI = async (argv, { cwd = process.cwd(), write = text => proces
           await ownership.release();
         }
       } else {
-        await launchRuntime({ cwd, configPath, dataRoot: paths.dataRoot, runtimeRoot: dirname(resolved.dshHomeRoot), write, ownership });
+        await launchRuntime({
+          cwd, configPath, dataRoot: paths.dataRoot, runtimeRoot: dirname(resolved.dshHomeRoot), write, ownership,
+          // Linux package setup and Python preparation have separate budgets.
+          // Leave time for Bridge readiness and platform connection afterwards.
+          timeoutMs: 2 * (resolved.preparationTimeoutMs ?? 120000) + resolved.startupTimeoutMs + 30000
+        });
       }
     } catch (error) {
       await ownership.release();

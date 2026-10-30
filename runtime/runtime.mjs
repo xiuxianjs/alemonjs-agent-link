@@ -55,6 +55,7 @@ export const launchRuntime = async ({ cwd, configPath, dataRoot, runtimeRoot, wr
     stop();
     rejectReady(Object.assign(new Error('Runtime readiness timed out'), { code: 'ERUNTIME_TIMEOUT', logPath: diagnostics }));
   };
+  const startupDeadline = Date.now() + timeoutMs;
   let timeout = setTimeout(timedOut, timeoutMs);
   const ownershipWatch = setInterval(() => {
     try {
@@ -93,10 +94,10 @@ export const launchRuntime = async ({ cwd, configPath, dataRoot, runtimeRoot, wr
       qqReady = true;
       finish();
     }
-    if (event?.name === 'login.qrcode' && typeof event.QRCode?.url === 'string') {
+    if (!completed && event?.name === 'login.qrcode' && typeof event.QRCode?.url === 'string') {
       qrDeadline ??= Date.now() + 600000;
       clearTimeout(timeout);
-      timeout = setTimeout(timedOut, Math.max(1, qrDeadline - Date.now()));
+      timeout = setTimeout(timedOut, Math.max(1, Math.max(startupDeadline, qrDeadline) - Date.now()));
       write('请使用手机 QQ 扫码授权。授权会更新该机器人的密钥，已有其他实例需同步更新。');
       void QRCode.toString(event.QRCode.url, { type: 'terminal', small: true })
         .then(qr => {
