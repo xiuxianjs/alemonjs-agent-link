@@ -1,6 +1,6 @@
 {
   "name": "alemonjs-agent-link",
-  "version": "0.0.24",
+  "version": "0.0.25",
   "description": "AgentLink",
   "author": {
     "name": "ningmengchongshui",
@@ -268,5 +268,5 @@
   "engines": {
     "node": ">=22.13.0"
   },
-  "gitHead": "7da2d3b192b3cea54acef8445295ae21774701b3"
+  "gitHead": "5e844e170eb999121a34065102b2fe10624efa7b"
 }

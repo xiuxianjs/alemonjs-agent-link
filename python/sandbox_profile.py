@@ -9,7 +9,7 @@ def macos_profile(workspace: Path, dsh_home: Path, runtime: Path, python_root: P
     must not cause us to grant the worker read access to the whole plugin tree.
     """
     writable = [workspace.resolve(), dsh_home.resolve()]
-    readonly = [runtime.resolve().parent, python_root.resolve(), Path('/System'), Path('/usr'), Path('/opt/homebrew')]
+    readonly = [runtime.resolve().parent, python_root.resolve(), Path(sys.base_prefix).resolve(), Path('/System'), Path('/usr'), Path('/opt/homebrew')]
     python_runtime = Path(sys.executable).resolve().parents[1]
     write_rules = "\n".join(f'(allow file-read* file-write* (subpath "{path}"))' for path in writable)
     read_rules = "\n".join(f'(allow file-read* (subpath "{path}"))' for path in readonly)
@@ -74,7 +74,9 @@ def linux_bwrap_command(
             command.extend(('--ro-bind', path, path))
     # bwrap creates destination parents for bind mounts. Bind the virtualenv
     # rather than its parent so the Worker cannot inspect plugin data.
-    for path in (python_root, runtime.parent, worker_script, chat_only_patch):
+    # A managed venv points outside itself to its base interpreter and stdlib.
+    # Expose only that installation, never the parent plugin data directory.
+    for path in dict.fromkeys((python_root, Path(sys.base_prefix).resolve(), runtime.parent, worker_script, chat_only_patch)):
         command.extend(('--ro-bind', str(path), str(path)))
     for path in (workspace, dsh_home):
         command.extend(('--bind', str(path), str(path)))

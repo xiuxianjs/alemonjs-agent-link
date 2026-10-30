@@ -1,3 +1,4 @@
+import { agentPlatformIssue } from '../lib/dsh/platform-preflight.js';
 import packageInfo from '../package.json' with { type: 'json' };
 import { access, mkdir, readFile, stat, writeFile, rename } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -141,9 +142,17 @@ export const diagnose = async (options = {}) => {
     check(
       'runtime',
       'info',
-      agent.runtimeMode === 'sandbox' ? '已要求完整沙箱；启动时会验证 Python 和系统沙箱。' : '普通聊天无需 Python；沙箱不可用时自动使用普通聊天。'
+      agent.runtimeMode === 'chat-only'
+        ? '已选择普通聊天，不会自动安装 Agent 沙箱环境。'
+        : agent.runtimeMode === 'sandbox'
+          ? '已要求完整沙箱；启动时会尝试安装依赖并验证 Python 和系统沙箱。'
+          : '启动后会尝试自动准备 Agent 环境；准备期间或失败时保留普通聊天。'
     )
   );
+  if (agent.runtimeMode !== 'chat-only') {
+    const issue = agentPlatformIssue();
+    checks.push(check('agent-platform', issue ? (agent.runtimeMode === 'sandbox' ? 'error' : 'info') : 'ok', issue || '系统版本与架构符合 Agent 运行包要求；安装、沙箱权限与模型连接仍需启动验证。'));
+  }
   return { ok: !checks.some(item => item.status === 'error'), configPath, dataRoot, platform: process.platform, arch: process.arch, checks };
 };
 
@@ -177,7 +186,7 @@ export const runCLI = async (argv, { cwd = process.cwd(), write = text => proces
     else if (arg === '--portable') portable = true;
     else if (arg === '--login' && argv[index + 1] === 'qq-bot') index++;
     else if (arg === '--help' || arg === '-h') {
-      write('AgentLink：agent-link [start | init | doctor] [--config 文件路径] [--portable]\n直接运行即可启动；首次自动生成配置。doctor --json 输出离线诊断。');
+      write('AgentLink：在仓库运行 npm start、npm run init 或 npm run doctor。\n附加参数放在 -- 后，例如 npm start -- --portable、npm run doctor -- --json。首次启动自动生成配置。');
       return 0;
     } else {
       write('无法识别参数。运行 agent-link --help 查看用法。');

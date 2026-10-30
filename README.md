@@ -91,7 +91,7 @@ npm install
 npm run build
 ```
 
-默认使用本地状态存储，无需单独安装 Redis。增强工具能力需要的环境及限制见 [运维手册](docs/operations.md)。
+默认使用本地状态存储，无需单独安装 Redis。启动时会静默尝试准备 Python 和沙箱依赖，成功后启用增强工具能力；网络、权限和平台限制见 [运维手册](docs/operations.md)。
 
 ### 4. 生成并填写配置
 
