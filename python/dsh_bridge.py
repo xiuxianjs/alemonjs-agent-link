@@ -31,7 +31,8 @@ HOME_ROOT = Path(os.environ['DSH_HOME_ROOT']).resolve()
 # DSH probes for a Git root above its cwd. Keeping the worker runtime under
 # this repository would require granting metadata access to the host .git
 # directory, so use an OS temporary root outside the checkout instead.
-RUNTIME_ROOT = Path(tempfile.gettempdir()).resolve() / 'agent-link-workers'
+RUNTIME_NAMESPACE = hashlib.sha256(json.dumps([str(WORKSPACE_ROOT), str(HOME_ROOT)], separators=(',', ':')).encode()).hexdigest()
+RUNTIME_ROOT = Path(tempfile.gettempdir()).resolve() / 'agent-link-workers' / RUNTIME_NAMESPACE
 PROFILE = os.environ.get('DSH_PROFILE', 'sdk')
 PROVIDER = os.environ.get('DSH_PROVIDER', 'deepseek-official')
 MODEL = os.environ.get('DSH_MODEL', 'deepseek-v4-flash')
@@ -451,11 +452,26 @@ def read_bounded(response, max_bytes: int) -> bytes:
     return data
 
 def group_key(session_id: str) -> str:
-    if not (session_id.startswith('dsh:qq:group:') or session_id.startswith('dsh:qq:private:')):
+    if not isinstance(session_id, str) or not (session_id.startswith('dsh:qq:group:') or session_id.startswith('dsh:qq:private:')):
         raise ValueError('unsupported session id')
     # Node owns generations; all generations remain in one physically isolated group home.
     group_id = session_id.rsplit(':v', 1)[0] if ':v' in session_id else session_id
     return hashlib.sha256(group_id.encode()).hexdigest()
+
+MISSING_CONVERSATION = object()
+
+def conversation_keys(session_id: str, conversation=MISSING_CONVERSATION) -> tuple[str, str]:
+    legacy = group_key(session_id)
+    if conversation is MISSING_CONVERSATION:
+        return legacy, legacy
+    if not isinstance(conversation, dict) or set(conversation) != {'groupKey', 'scopeKey'}:
+        raise ValueError('invalid conversation identity')
+    if not all(isinstance(conversation[field], str) and re.fullmatch(r'[0-9a-f]{64}', conversation[field]) for field in ('groupKey', 'scopeKey')):
+        raise ValueError('invalid conversation identity')
+    parent = conversation['groupKey']
+    key = hashlib.sha256((parent + ':scope:' + conversation['scopeKey']).encode()).hexdigest()
+    return parent, key
+
 
 def blocked(text: str, keywords: set[str]) -> bool:
     return any(word in text for word in keywords)
@@ -637,9 +653,11 @@ def validate_preflight() -> str | None:
     return sandbox_self_test()
 
 class Worker:
-    def __init__(self, key: str, port: int, capabilities: dict):
+    def __init__(self, key: str, port: int, capabilities: dict, parent_key: str | None = None):
         if RUNTIME_PATH is None: raise WorkerError('DSH runtime unavailable')
         self.key, self.port, self.capabilities = key, port, capabilities
+        self.parent_key = parent_key if parent_key is not None else key
+        self.scoped = parent_key is not None
         self.proxy_token = os.urandom(32).hex()
         self.framework = None
         self.personal_api_key = None
@@ -660,14 +678,60 @@ class Worker:
         self.stdout_queue: queue.Queue[str | None] = queue.Queue()
         self.last_event_type = 'not-started'
         self.last_phase = 'not-started'
+        self.load_resume_state()
 
     @property
-    def runtime_dir(self) -> Path: return RUNTIME_ROOT / self.key / 'runtime'
+    def relative_home(self) -> Path:
+        return Path(self.parent_key) / 'scopes' / self.key if self.scoped else Path(self.key)
+    @property
+    def runtime_dir(self) -> Path: return RUNTIME_ROOT / self.relative_home / 'runtime'
     @property
     def dsh_home(self) -> Path:
-        return HOME_ROOT / self.key / ('turns/' + self.turn_id if self.turn_id else 'dsh-home')
+        return HOME_ROOT / self.relative_home / ('turns/' + self.turn_id if self.turn_id else 'dsh-home')
     @property
-    def session_snapshot(self) -> Path: return HOME_ROOT / self.key / 'session-snapshot'
+    def session_snapshot(self) -> Path: return HOME_ROOT / self.relative_home / 'session-snapshot'
+    @property
+    def resume_state_path(self) -> Path: return HOME_ROOT / self.relative_home / 'resume-state.json'
+
+    def load_resume_state(self) -> None:
+        # Bridge-owned state is outside every model sandbox's writable/readable home.
+        if not self.session_snapshot.is_dir() or self.session_snapshot.is_symlink(): return
+        fd = None
+        try:
+            fd = os.open(self.resume_state_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_size > 16384: return
+            with os.fdopen(fd, 'r', encoding='utf-8') as stream:
+                fd = None
+                raw = stream.read(16385)
+            if len(raw) > 16384: return
+            value = json.loads(raw)
+            if not isinstance(value, dict) or set(value) != {'version', 'workerKey', 'epoch', 'sessions'}: return
+            if type(value['version']) is not int or value['version'] != 1 or value['workerKey'] != self.key: return
+            if not isinstance(value['epoch'], str) or not re.fullmatch(r'[0-9a-f]{32}', value['epoch']): return
+            sessions = value['sessions']
+            if not isinstance(sessions, list) or len(sessions) > 64 or not all(isinstance(item, str) and re.fullmatch(r'[0-9a-f]{64}', item) for item in sessions): return
+            self.session_epoch = value['epoch']
+            self.persisted_sessions = set(sessions)
+        except (OSError, ValueError, TypeError): pass
+        finally:
+            if fd is not None: os.close(fd)
+
+    def save_resume_state(self) -> None:
+        target = self.resume_state_path
+        target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        staging = target.with_name('resume-' + os.urandom(16).hex() + '.tmp')
+        value = {'version': 1, 'workerKey': self.key, 'epoch': self.session_epoch, 'sessions': sorted(self.persisted_sessions)[-64:]}
+        try:
+            fd = os.open(staging, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+                json.dump(value, stream, separators=(',', ':'))
+                stream.flush(); os.fsync(stream.fileno())
+            staging.replace(target)
+        finally:
+            try: staging.unlink()
+            except FileNotFoundError: pass
+
     @property
     def policy_patch(self) -> Path: return self.dsh_home / 'agent-link-tools.patch.yml'
 
@@ -778,7 +842,7 @@ class Worker:
     def run(self, message: str, session_id: str, on_content, framework=None, personal_api_key=None, workspace=None) -> dict:
         with self.lock:
             enabled = framework is not None
-            isolated = enabled or personal_api_key is not None
+            isolated = self.scoped or enabled or personal_api_key is not None
             if isolated or self.framework_enabled != enabled:
                 self.stop()
             self.framework_enabled = enabled
@@ -807,16 +871,25 @@ class Worker:
                         self.stop(graceful=completed)
                         if completed:
                             self.save_session_data()
-                            self.persisted_sessions.add(session_id)
+                            session_hash = hashlib.sha256(session_id.encode()).hexdigest()
+                            if session_hash not in self.persisted_sessions and len(self.persisted_sessions) >= 64: self.persisted_sessions.pop()
+                            self.persisted_sessions.add(session_hash)
+                            self.save_resume_state()
                 finally:
                     if isolated: shutil.rmtree(self.dsh_home, ignore_errors=True)
                     self.turn_id = None
+                    for root in (WORKSPACE_ROOT, HOME_ROOT, RUNTIME_ROOT):
+                        parent = root / self.parent_key
+                        try:
+                            if parent.is_dir() and not parent.is_symlink(): os.utime(parent, None)
+                        except OSError as error:
+                            print(f'worker activity timestamp refresh failed error={type(error).__name__}', file=sys.stderr)
 
     def _run(self, message: str, session_id: str, on_content) -> dict:
         # Caller holds the worker lock for the whole turn, including MCP callbacks.
         self.start(); self.last_used = time.monotonic()
         assert self.process and self.process.stdin and self.process.stdout
-        self.process.stdin.write(json.dumps({'type': 'chat', 'message': message, 'sessionId': session_id, 'resume': (self.framework_enabled or self.personal_api_key is not None) and session_id in self.persisted_sessions}, ensure_ascii=False) + '\n'); self.process.stdin.flush()
+        self.process.stdin.write(json.dumps({'type': 'chat', 'message': message, 'sessionId': session_id, 'resume': (self.scoped or self.framework_enabled or self.personal_api_key is not None) and hashlib.sha256(session_id.encode()).hexdigest() in self.persisted_sessions}, ensure_ascii=False) + '\n'); self.process.stdin.flush()
         deadline = time.monotonic() + WORKER_TIMEOUT_SECONDS
         while True:
             remaining = deadline - time.monotonic()
@@ -840,7 +913,7 @@ class Worker:
                 # logs may serialize them.
                 raise WorkerReportedError(event.get('code'))
 
-def get_worker(key: str, port: int, capabilities: dict) -> Worker:
+def get_worker(key: str, port: int, capabilities: dict, parent_key: str | None = None) -> Worker:
     with WORKERS_LOCK:
         worker = WORKERS.get(key)
         if worker is not None and worker.capabilities != capabilities:
@@ -857,12 +930,19 @@ def get_worker(key: str, port: int, capabilities: dict) -> Worker:
                     oldest.stop()
                 else:
                     raise WorkerCapacityError('active worker capacity reached')
-            worker = Worker(key, port, capabilities); WORKERS[key] = worker
+            worker = Worker(key, port, capabilities) if parent_key is None else Worker(key, port, capabilities, parent_key); WORKERS[key] = worker
         return worker
 
 def discard_worker(key: str) -> None:
     with WORKERS_LOCK: worker = WORKERS.pop(key, None)
     if worker: worker.stop()
+
+def discard_group(parent_key: str) -> None:
+    with WORKERS_LOCK:
+        keys = [key for key, worker in WORKERS.items() if getattr(worker, 'parent_key', key) == parent_key]
+        workers = [WORKERS.pop(key) for key in keys]
+    for worker in workers: worker.stop()
+
 
 def close_workers() -> None:
     for key in list(WORKERS): discard_worker(key)
@@ -871,7 +951,7 @@ def cleanup_stale_group_data() -> None:
     """Remove orphaned, inactive group directories left after Redis loss or a crash."""
     cutoff = time.time() - RETENTION_DAYS * 86400
     with WORKERS_LOCK:
-        active_keys = set(WORKERS)
+        active_keys = {getattr(worker, 'parent_key', key) for key, worker in WORKERS.items()}
     import shutil
     for root in (WORKSPACE_ROOT, HOME_ROOT, RUNTIME_ROOT):
         if not root.is_dir():
@@ -906,19 +986,21 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(error.encode('utf-8'))
             return
-        self.send_response(HTTPStatus.OK); self.send_header('Content-Type', 'application/json'); self.end_headers(); self.wfile.write(b'{"status":"ready","sandbox":true}')
+        self.send_response(HTTPStatus.OK); self.send_header('Content-Type', 'application/json'); self.end_headers(); self.wfile.write(b'{"status":"ready","sandbox":true,"conversationScopes":1}')
     def do_DELETE(self):
         if not self.authorized(): self.send_error(HTTPStatus.UNAUTHORIZED); return
         raw = None
-        if self.path.startswith('/v1/group-hash/'): raw = unquote(self.path[len('/v1/group-hash/'):])
+        if self.path.startswith('/v1/session-hash/'): raw = unquote(self.path[len('/v1/session-hash/'):])
+        elif self.path.startswith('/v1/group-hash/'): raw = unquote(self.path[len('/v1/group-hash/'):])
         elif self.path.startswith('/v1/group/'): raw = group_key(unquote(self.path[len('/v1/group/'):]))
         elif self.path.startswith('/v1/session/'): raw = group_key(unquote(self.path[len('/v1/session/'):]))
         if raw is None or len(raw) != 64 or any(char not in '0123456789abcdef' for char in raw): self.send_error(HTTPStatus.BAD_REQUEST); return
-        discard_worker(raw)
+        discard_group(raw)
         import shutil
         for root in (WORKSPACE_ROOT, HOME_ROOT, RUNTIME_ROOT):
             target = root / raw
-            if target.exists(): shutil.rmtree(target)
+            if target.is_symlink(): target.unlink()
+            elif target.exists(): shutil.rmtree(target)
         self.send_response(HTTPStatus.NO_CONTENT); self.end_headers()
     def do_POST(self):
         if self.path.startswith('/internal/framework/'): self.proxy_framework(); return
@@ -932,7 +1014,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(error.encode('utf-8'))
             return
         try:
-            body = self.json_body(); session_id, prompt = body['sessionId'], body['message']; key = group_key(session_id); capabilities = valid_capabilities(body.get('capabilities'))
+            body = self.json_body(); session_id, prompt = body['sessionId'], body['message']; conversation = body.get('conversation', MISSING_CONVERSATION); parent_key, key = conversation_keys(session_id, conversation); capabilities = valid_capabilities(body.get('capabilities'))
             if isinstance(prompt, str) and len(json.dumps(body).encode()) > MAX_BODY: raise ValueError('text request too large')
             framework = framework_endpoint(body.get('framework'))
             personal_api_key = body.get('scopedApiKey', body.get('personalApiKey'))
@@ -964,7 +1046,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise ClientDisconnected('SSE client disconnected')
                 streamed = True
         try:
-            worker = get_worker(key, self.server.server_port, capabilities)
+            worker = get_worker(key, self.server.server_port, capabilities) if conversation is MISSING_CONVERSATION else get_worker(key, self.server.server_port, capabilities, parent_key)
             result = worker.run(trusted_prompt(prompt, capabilities) if isinstance(prompt, str) else [{'type': 'text', 'text': trusted_prompt('', capabilities)}, *prompt], session_id, on_content, framework, personal_api_key, workspace)
             if worker.personal_exhausted:
                 send_sse(self, {'type': exhausted_event}); return

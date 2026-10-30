@@ -1,27 +1,25 @@
 {
   "name": "alemonjs-agent-link",
-  "version": "0.0.21",
+  "version": "0.0.22",
   "description": "AgentLink",
   "author": {
     "name": "ningmengchongshui",
     "email": "ningmengchongshui@gmail.com",
     "url": "https://github.com/ningmengchongshui"
   },
+  "license": "MIT",
   "type": "module",
   "main": "lib/index.js",
   "files": [
     "bin",
     "lib",
+    "dist",
     "python/chat_only.patch.yml",
     "python/dsh_bridge.py",
     "python/dsh_worker.py",
     "python/requirements.txt",
     "python/sandbox_profile.py",
-    "scripts/replay-reply-gate.mjs",
-    "scripts/live-gate-metrics.mjs",
-    "README.md",
-    "scripts/compare-companion.mjs",
-    "benchmarks/companion-scenarios.json"
+    "README.md"
   ],
   "exports": {
     ".": {
@@ -36,7 +34,10 @@
     "dev": "npx lvy app.ts",
     "start": "node bin/agent-link.cjs",
     "view": "npx lvy dev --jsxp",
-    "test": "npx lvy build && npx eslint src && node --test --test-force-exit test/*.test.mjs && python3 -m unittest scripts/test_dsh_bridge.py scripts/test_dsh_worker.py",
+    "install-fe": "yarn --cwd frontend install",
+    "build-fe": "yarn --cwd frontend build",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run typecheck && npx lvy build && npx eslint src && node --test --test-force-exit test/*.test.mjs && python3 -m unittest scripts/test_dsh_bridge.py scripts/test_dsh_worker.py scripts/test_local_asr_server.py",
     "eslint": "eslint src --fix",
     "link-codex": "ln -s \"$PWD/.github/skills\" \"$PWD/.codex/skills\"",
     "format": "prettier --write .",
@@ -47,7 +48,8 @@
     "doctor": "node bin/agent-link.cjs doctor",
     "validate:gate": "node scripts/replay-reply-gate.mjs",
     "validate:live": "node scripts/live-gate-metrics.mjs",
-    "validate:companion": "node scripts/compare-companion.mjs"
+    "validate:companion": "node scripts/compare-companion.mjs",
+    "sample:companion": "node scripts/sample-companion.mjs"
   },
   "keywords": [
     "alemonjs"
@@ -271,5 +273,5 @@
   "bin": {
     "agent-link": "bin/agent-link.cjs"
   },
-  "gitHead": "d8fa38f57ad389aeca9144eb44d4183e7888ae85"
+  "gitHead": "c44d16bd4fe2fb936c904bd35780cc278bc351a7"
 }
