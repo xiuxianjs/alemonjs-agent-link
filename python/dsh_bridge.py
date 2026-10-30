@@ -181,11 +181,7 @@ def pool_select(exclude: set[str] | None = None) -> dict | None:
             return None
         preferred = [endpoint for endpoint in available if pool_state(endpoint.get('id', '')).get('healthy') is not False]
         candidates = preferred or available
-        expanded = []
-        for endpoint in candidates:
-            expanded.extend([endpoint] * max(1, min(100, int(endpoint.get('weight', 1)))))
-        endpoint = expanded[POOL_CURSOR % len(expanded)]
-        POOL_CURSOR = (POOL_CURSOR + 1) % len(expanded)
+        endpoint = min(candidates, key=lambda item: pool_state(item.get('id', '')).get('active', 0))
         pool_state(endpoint.get('id', ''))['active'] += 1
         return endpoint
 
@@ -1124,7 +1120,7 @@ class Handler(BaseHTTPRequestHandler):
         is_messages = self.headers.get('x-api-key') == token
         retry_statuses = set((MODEL_POOL or {}).get('retryStatuses', [401, 402, 403, 429, 500, 502, 503, 504]))
         max_attempts = max(1, min(5, int((MODEL_POOL or {}).get('maxAttempts', 3))))
-        attempts = 1 if personal_api_key or workspace or not POOL_ENDPOINTS else max_attempts
+        attempts = 1  # Never replay an uncertain model POST on another endpoint.
         tried: set[str] = set()
         for attempt in range(attempts):
             endpoint = None if personal_api_key or workspace or not POOL_ENDPOINTS else pool_select(tried)
