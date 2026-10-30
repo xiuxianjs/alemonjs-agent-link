@@ -1,6 +1,6 @@
 {
   "name": "alemonjs-agent-link",
-  "version": "0.0.22",
+  "version": "0.0.23",
   "description": "AgentLink",
   "author": {
     "name": "ningmengchongshui",
@@ -263,9 +263,7 @@
     "playwright-core": "^1.64.1",
     "proper-lockfile": "^4.1.2",
     "qrcode": "^1.5.4",
-    "sharp": "^0.34.3",
-    "ws": "8.18.1",
-    "yaml": "^2.9.1"
+    "sharp": "^0.34.3"
   },
   "engines": {
     "node": ">=22.13.0"
@@ -273,5 +271,5 @@
   "bin": {
     "agent-link": "bin/agent-link.cjs"
   },
-  "gitHead": "c44d16bd4fe2fb936c904bd35780cc278bc351a7"
+  "gitHead": "43f585293adb4e5ae5df2d356fa29a06b33600a1"
 }
