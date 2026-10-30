@@ -1,6 +1,6 @@
 {
   "name": "alemonjs-agent-link",
-  "version": "0.0.29",
+  "version": "0.0.30",
   "description": "AgentLink",
   "author": {
     "name": "ningmengchongshui",
@@ -16,6 +16,7 @@
     "dist",
     "python/chat_only.patch.yml",
     "python/dsh_bridge.py",
+    "python/token_usage.py",
     "python/dsh_worker.py",
     "python/requirements.txt",
     "python/sandbox_profile.py",
@@ -268,5 +269,5 @@
   "engines": {
     "node": ">=22.13.0"
   },
-  "gitHead": "578730df2328cc44562d326ec3be7e0b78bc7f9a"
+  "gitHead": "c670ec5a1e204b7d77566147cbd7a2ab847f9143"
 }

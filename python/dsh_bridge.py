@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Authenticated loopback bridge which runs one sandboxed DSH worker per QQ group."""
 import atexit
+from token_usage import begin_usage, extract_tokens
 from collections import deque
 import hashlib
 import json
@@ -1150,6 +1151,11 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 headers['Authorization'] = f'Bearer {api_key}'
             request = urllib.request.Request(target, data=outgoing, headers=headers, method='POST')
+            settle_tokens = lambda usage: None
+            try:
+                settle_tokens = begin_usage(HOME_ROOT.parent, target, api_key)
+            except Exception:
+                print('Token usage ledger unavailable', file=sys.stderr)
             started_at = time.monotonic()
             try:
                 response = urllib.request.build_opener(NoRedirect()).open(request, timeout=WORKER_TIMEOUT_SECONDS)
@@ -1179,6 +1185,10 @@ class Handler(BaseHTTPRequestHandler):
                 try: self.send_error(HTTPStatus.BAD_GATEWAY)
                 except (BrokenPipeError, ConnectionResetError, OSError): pass
                 return
+            try:
+                settle_tokens(extract_tokens(data))
+            except Exception:
+                print('Token usage settlement failed', file=sys.stderr)
             record_bridge_usage('personal' if personal_api_key else (str(workspace.get('id') or 'workspace') if workspace else (str(endpoint.get('id', 'legacy')) if endpoint else 'legacy')), data)
             try:
                 self.send_response(response.status); self.send_header('Content-Type', response.headers.get('Content-Type', 'application/json')); self.end_headers(); self.wfile.write(data)
