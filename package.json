@@ -1,6 +1,6 @@
 {
   "name": "alemonjs-agent-link",
-  "version": "0.0.23",
+  "version": "0.0.24",
   "description": "AgentLink",
   "author": {
     "name": "ningmengchongshui",
@@ -11,7 +11,7 @@
   "type": "module",
   "main": "lib/index.js",
   "files": [
-    "bin",
+    "runtime",
     "lib",
     "dist",
     "python/chat_only.patch.yml",
@@ -32,7 +32,7 @@
   },
   "scripts": {
     "dev": "npx lvy app.ts",
-    "start": "node bin/agent-link.cjs",
+    "start": "node runtime/agent-link.cjs",
     "view": "npx lvy dev --jsxp",
     "install-fe": "yarn --cwd frontend install",
     "build-fe": "yarn --cwd frontend build",
@@ -44,8 +44,8 @@
     "check-format": "git diff --exit-code",
     "sync-qq-commands": "node scripts/sync-qq-command-panels.mjs",
     "precommit": "lint-staged",
-    "init": "node bin/agent-link.cjs init",
-    "doctor": "node bin/agent-link.cjs doctor",
+    "init": "node runtime/agent-link.cjs init",
+    "doctor": "node runtime/agent-link.cjs doctor",
     "validate:gate": "node scripts/replay-reply-gate.mjs",
     "validate:live": "node scripts/live-gate-metrics.mjs",
     "validate:companion": "node scripts/compare-companion.mjs",
@@ -268,8 +268,5 @@
   "engines": {
     "node": ">=22.13.0"
   },
-  "bin": {
-    "agent-link": "bin/agent-link.cjs"
-  },
-  "gitHead": "43f585293adb4e5ae5df2d356fa29a06b33600a1"
+  "gitHead": "7da2d3b192b3cea54acef8445295ae21774701b3"
 }

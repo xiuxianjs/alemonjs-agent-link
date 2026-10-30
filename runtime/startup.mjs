@@ -263,7 +263,7 @@ export const runCLI = async (argv, { cwd = process.cwd(), write = text => proces
     write(
       permission
         ? '无法访问启动文件或配置目录，请使用当前用户可写的目录后重试。'
-        : '启动未完成。请运行 agent-link doctor 检查配置，并确认使用包含 lib 构建产物的完整安装包。'
+        : '启动未完成。请运行 npm run doctor 检查配置，并确认使用包含 lib 构建产物的完整安装包。'
     );
     return 1;
   }

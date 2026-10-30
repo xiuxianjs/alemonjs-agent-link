@@ -2,13 +2,13 @@
 
 <img src="docs/assets/hero.png" alt="AgentLink：把 AI 同事请进 QQ 群" width="100%" />
 
-# AgentLink 🐟
+# 智能体连接
 
 **会聊天、能查网页、记得住事，也守得住边界。**
 
 QQ Bot / OneBot 11 · Node.js 22.13+ · DSH 沙箱会话 · 单进程 · MIT
 
-[快速开始](#快速开始) · [运行模型](#运行模型) · [能做什么](#能做什么) · [命令速查](docs/commands.md) · [文档首页](docs/README.md) · [配置指南](docs/config.md)
+[如何本地启动](#如何本地启动) · [运行模型](#运行模型) · [能做什么](#能做什么) · [命令速查](docs/commands.md) · [文档首页](docs/README.md) · [配置指南](docs/config.md)
 
 </div>
 
@@ -59,37 +59,75 @@ QQ / OneBot 11
 
 细节与每个参数的默认值见[群聊参与策略](docs/config.md#群聊参与策略)。
 
-## 快速开始
+## 如何本地启动
 
-只需要 **Node.js 22.13+**。运行时依赖随安装包安装，不需要自己准备 Redis、Docker、Python 或 Git。
+### 1. 安装 Git 和 Node.js
 
-1. **准备模型 Key**：默认 DeepSeek，填在 `alemonjs-agent-link.apiKey`。
-2. **启动**：
-
-   ```bash
-   npx alemonjs-agent-link
-   ```
-
-   首次会在固定用户目录生成 `alemon.config.yaml` 并显示绝对路径。填好 Key 后重跑同一条命令，按终端二维码完成 QQ 授权。已有 AppID 与密钥可以直接填写，跳过扫码。`npx` 入口需要包含新启动器的发布版本；本仓库内运行见下方命令。
-
-3. **验证**：群里 @ 机器人或私聊 `/提问 你好`；发送 `/状态` 查看实际运行情况。
-
-遇到问题先跑离线检查，它不会连接 QQ、模型或安装依赖：
+先安装 **Git** 和 **Node.js 22.13+**（包含 npm）。Git 可从 [Git 下载页](https://git-scm.com/downloads) 获取，Node.js 可从 [Node.js 下载页](https://nodejs.org/en/download) 获取。安装后重新打开终端，检查版本：
 
 ```bash
-npx alemonjs-agent-link doctor
-# 本仓库使用 npm run doctor
+git --version
+node --version
+npm --version
 ```
 
-在本仓库运行则执行：
+macOS 也可以运行 `xcode-select --install` 安装包含 Git 的命令行工具；Ubuntu / Debian 可使用 `sudo apt update` 后执行 `sudo apt install git`。Windows 若需要完整沙箱工具能力，请在 WSL2 内安装 Git、Node.js 并执行后续步骤，详见 [平台支持](docs/operations.md#平台支持与部署前检查)。
+
+### 2. 使用 Git 下载代码
+
+在准备存放项目的目录打开终端：
+
+```bash
+git clone https://github.com/xiuxianjs/alemonjs-agent-link.git
+cd alemonjs-agent-link
+```
+
+后续命令都在这个仓库目录内执行。
+
+### 3. 安装依赖并构建
 
 ```bash
 npm install
 npm run build
-npm start          # 之后直接 npm start
 ```
 
-配置与数据默认保存在固定用户目录，换工作目录不会另建空库；需要便携目录用 `--portable`，指定配置用 `--config 路径`。
+默认使用本地状态存储，无需单独安装 Redis。增强工具能力需要的环境及限制见 [运维手册](docs/operations.md)。
+
+### 4. 生成并填写配置
+
+```bash
+npm run init
+```
+
+命令会显示 `alemon.config.yaml` 的绝对路径。打开该文件，在已有配置段中填写自己的模型 API Key：
+
+```yaml
+alemonjs-agent-link:
+  apiKey: '<MODEL_API_KEY>'
+```
+
+将 `<MODEL_API_KEY>` 替换为实际密钥，保留配置中的其他字段，不要重复添加同名 YAML 段。默认使用 DeepSeek；其他模型服务的配置见 [配置指南](docs/config.md)。
+
+### 5. 检查并启动
+
+```bash
+npm run doctor
+npm start
+```
+
+离线检查通过后启动。QQ 凭证留空时，按终端提示扫码授权；已有 AppID 与密钥可直接填入配置。群里 @ 机器人或私聊 `/提问 你好`，发送 `/状态` 查看实际运行情况。按 Ctrl+C 停止，后续启动直接执行 `npm start`。
+
+配置与数据默认保存在固定用户目录；检测到仓库内已有配置或数据时会沿用。命令输出的配置路径为准。需要将配置与数据放在当前目录时，生成、检查和启动都使用 `--portable`：
+
+```bash
+npm run init -- --portable
+npm run doctor -- --portable
+npm start -- --portable
+```
+
+指定已有配置可使用 `npm start -- --config /absolute/path/alemon.config.yaml`。
+
+已有 AlemonJS 宿主的插件安装方式见 [运维手册](docs/operations.md#插件安装)。
 
 > **第一次设置主人**：私聊机器人发送 `/我是主人`，到服务端日志查看 6 位验证码，再私聊回复 `/我的主人 验证码`。验证码仅存内存、5 分钟有效、最多尝试 5 次。验证通过后写入 `master_key`，群管理、模型与额度命令才会生效。
 
