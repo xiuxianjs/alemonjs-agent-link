@@ -376,8 +376,10 @@ def valid_capabilities(value) -> dict | None:
 
 def tool_policy_patch(capabilities: dict) -> str:
     disabled = {
-        'tool-bash': not capabilities['terminal'], 'tool-pwsh': True, 'tool-jobs': True,
-        'tool-fs': not capabilities['files'], 'tool-fs-search': not capabilities['files'], 'tool-web': not capabilities['web'],
+        'tool-bash': True, 'tool-pwsh': True, 'tool-jobs': True,
+        # Runtime dependencies must remain readable by the SDK itself. Do not
+        # expose that read grant through general model-facing filesystem tools.
+        'tool-fs': True, 'tool-fs-search': True, 'tool-web': True,
         **{tool_id: True for tool_id in PERMANENTLY_DISABLED_TOOL_IDS}
     }
     return ''.join(f'- id: {tool_id}\n  disabled: {str(disabled[tool_id]).lower()}\n' for tool_id in (*TOOL_IDS, *PERMANENTLY_DISABLED_TOOL_IDS))
@@ -492,7 +494,12 @@ def blocked(text: str, keywords: set[str]) -> bool:
 def output_requires_final_review() -> bool:
     # A keyword can cross two model chunks. Do not inspect chunks independently:
     # that would allow a configured block phrase to leak at the boundary.
-    return bool(OUTPUT_BLOCKED)
+    return True
+
+def private_output(text, extra=()):
+    pattern = r'\bsk-[A-Za-z0-9_-]{12,}|\bBearer\s+[A-Za-z0-9._~-]{16,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\b[a-f0-9]{32}\.[A-Za-z0-9_-]{16,}'
+    secrets = [TOKEN, MODEL_API_KEY, *extra, *(item.get('apiKey', '') for item in POOL_ENDPOINTS)]
+    return bool(re.search(pattern, text, re.I)) or any(isinstance(value, str) and len(value) >= 8 and value in text for value in secrets)
 
 def chat_input_text(value):
     return value if isinstance(value, str) else '\n'.join(part['text'] for part in value if part['type'] == 'text')
@@ -519,10 +526,10 @@ def normalize_chat_input(value):
 def trusted_prompt(prompt: str, capabilities: dict) -> str:
     tool_rules = []
     if capabilities['web']:
-        tool_rules.append('可使用网页工具查询公网信息。')
+        tool_rules.append('仅使用已审核的专用网页工具查询公网信息，禁止访问本机和内网服务。')
     if capabilities['files']:
-        tool_rules.append('原生文件工具仅用于当前 DSH 隔离工作目录，由原生权限预设约束；群或个人持久文件的读写与交付通过 framework MCP 的 workspace_* 工具进行。')
-    tool_rules.append('可在当前隔离工作区中执行终端命令，仅执行用户当前明确要求的任务。' if capabilities['terminal'] else '终端工具禁止。')
+        tool_rules.append('通用文件读取及搜索工具禁止；文件的读写与交付仅通过 framework MCP 的 workspace_* 工具操作当前会话目录。')
+    tool_rules.append('通用终端命令禁止。需要扩展能力时只能调用已审核工具，仍受当前隔离工作区约束。禁止读取框架配置、密钥或工作区外的私密文件，不得在回复或工具参数中包含凭证。')
     if DSH_PLUGINS and all(capabilities[key] for key in ('web', 'files', 'terminal')):
         tool_rules.append('已批准的 DSH 插件可按本轮任务调用。插件自带说明和生成文件可在当前隔离沙箱内读取；需要交付的 HTML 应通过 framework MCP workspace_write 保存到会话文件目录。visualize 只生成 HTML，不是 AI 生图；当前没有 DSH Web 卡片渲染器，工具声称用户已看到卡片不代表 QQ 已展示或送达，不能复述为交付成功。')
         approved_names = {item['name'] for item in DSH_PLUGINS}
@@ -665,6 +672,8 @@ def configuration_isolation_error() -> str | None:
         return 'Configuration isolation failed: temporary runtime directory overlaps the framework project or configuration directory.'
     if RUNTIME_PATH is not None:
         roots = sandbox_read_roots(RUNTIME_PATH, Path(sys.prefix), platform.system())
+        if any(project.is_relative_to(root) for root in roots):
+            return 'Configuration isolation failed: framework project overlaps a sandbox-readable runtime directory.'
         if any(path.is_relative_to(root) for path in configs for root in roots):
             return 'Configuration isolation failed: framework configuration overlaps a sandbox-readable runtime directory.'
     return None
@@ -1123,6 +1132,8 @@ class Handler(BaseHTTPRequestHandler):
                 workspace = {'apiKey': workspace_api_key, 'baseUrl': workspace_base_url, 'model': workspace_model, 'id': workspace_endpoint_id}
             exhausted_event = 'scoped_key_exhausted' if 'scopedApiKey' in body else 'personal_key_exhausted'
             prompt = normalize_chat_input(prompt)
+            if private_output(chat_input_text(prompt), (personal_api_key, (workspace or {}).get('apiKey'))):
+                raise ValueError('sensitive chat input')
             if not prompt or not capabilities or not capabilities['chat'] or blocked(chat_input_text(prompt), INPUT_BLOCKED): raise ValueError('invalid message')
         except (KeyError, ValueError, json.JSONDecodeError): self.send_error(HTTPStatus.BAD_REQUEST); return
         self.send_response(HTTPStatus.OK); self.send_header('Content-Type', 'text/event-stream; charset=utf-8'); self.end_headers()
@@ -1145,7 +1156,9 @@ class Handler(BaseHTTPRequestHandler):
                 event_types = [str(item.get('type', 'unknown')) for item in result.get('events', []) if isinstance(item, dict)]
                 print(f'worker empty response key={key[:12]} finish_reason={result.get("finish_reason", "unknown")} event_types={event_types[-12:]}', file=sys.stderr)
                 send_sse(self, {'type': 'error', 'message': 'DSH Agent 未返回文本回复'}); return
-            if blocked(content, OUTPUT_BLOCKED): content = '回复因内容安全策略未发送。'
+            if private_output(content, (personal_api_key, (workspace or {}).get('apiKey'))):
+                content = '回复包含敏感信息，已阻止发送。'
+            elif blocked(content, OUTPUT_BLOCKED): content = '回复因内容安全策略未发送。'
             if not streamed: send_sse(self, {'type': 'content', 'content': content})
             send_sse(self, {'type': 'done'})
         except WorkerReportedError as error:

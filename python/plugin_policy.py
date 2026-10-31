@@ -132,8 +132,7 @@ def plugin_specs(home, plugins, cache=None):
         if reviewed is None:
             if any(key.rsplit('@', 1)[0] == item['name'] for key in catalog):
                 raise ValueError('DSH plugin version has not been reviewed')
-            specs.append(spec)
-            continue
+            raise ValueError('DSH plugin has not been reviewed')
         data = reviewed_download(reviewed, cache)
         target = Path(home) / f'.approved-plugin-{index}.tgz'
         # The prior worker may have left a link. Never follow it when staging.
