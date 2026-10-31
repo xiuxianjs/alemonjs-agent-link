@@ -8,7 +8,7 @@ import { setTimeout, clearTimeout } from 'node:timers';
 import { logger, type MessageMediaItem } from 'alemonjs';
 import { boundKeyGroupPolicy, decideGroupReply, groupTopicRelevance, type GroupChatPolicy, type GroupReplyDecision, type GroupReplyMode } from './group-policy';
 import { getDSHConfig } from '../dsh/client';
-import { selectPerceptionContext } from './perception-context';
+import { selectPerceptionContext, type ChatLine } from './perception-context';
 import { groupStyleHint } from './style-profile';
 import { ConversationThreads } from './conversation-threads';
 import { GroupWaitController } from './group-wait';
@@ -69,7 +69,7 @@ type GroupState = {
   fragments: MessageFragments;
   gatePending?: Pending;
   loopGuard: LoopGuard;
-  recent: { at: number; text: string; speaker: string }[];
+  recent: ChatLine[];
   lastBotReply?: { at: number; text: string; speaker: string };
   gateAbort?: AbortController;
   gateUserKey?: string;
@@ -320,7 +320,14 @@ export class GroupConversationCoordinator {
     if (waiting === 'waiting') {
       state.recent = [
         ...state.recent.filter(item => now - item.at < Math.max(policy.activeWindowSeconds, getDSHConfig().perceptionWindowSeconds) * 1000),
-        { at: now, text: message.text.slice(0, 2000), speaker: message.userId }
+        {
+          at: now,
+          text: message.text.slice(0, 2000),
+          speaker: message.userId,
+          messageId: message.id,
+          replyToId: message.messageContext?.message?.replyToId,
+          mentions: message.messageContext?.mentions?.map(item => ({ speaker: item.id, isSelf: item.isSelf }))
+        }
       ].slice(-100);
 
       return { reply: false, mode: 'none', reason: '等待已设置的群聊条件', relevance: 0 };
@@ -350,7 +357,14 @@ export class GroupConversationCoordinator {
     if (state.retired) return { reply: false, mode: 'none', reason: '会话已重置', relevance: 0 };
     state.recent = [
       ...state.recent.filter(item => now - item.at < Math.max(policy.activeWindowSeconds, getDSHConfig().perceptionWindowSeconds) * 1000),
-      { at: now, text: message.text.slice(0, 2000), speaker: message.userId }
+      {
+        at: now,
+        text: message.text.slice(0, 2000),
+        speaker: message.userId,
+        messageId: message.id,
+        replyToId: message.messageContext?.message?.replyToId,
+        mentions: message.messageContext?.mentions?.map(item => ({ speaker: item.id, isSelf: item.isSelf }))
+      }
     ].slice(-100);
     state.replies = state.replies.filter(at => now - at < 3600000);
     state.interjections = state.interjections.filter(at => now - at < 3600000);
@@ -637,7 +651,6 @@ export class GroupConversationCoordinator {
         return;
       }
       if (
-        decision.mode !== 'engaged' &&
         this.services.classify &&
         policy.replyGateEnabled !== false &&
         !pending.anchor.message.explicitCommand &&
@@ -669,6 +682,8 @@ export class GroupConversationCoordinator {
           windowSeconds: getDSHConfig().perceptionWindowSeconds,
           maxChars: getDSHConfig().perceptionMaxChars
         }).map(item => ({
+          ...item,
+          mentions: item.mentions?.map(mention => ({ ...mention, speaker: alias(mention.speaker) })),
           speaker: alias(item.speaker),
           text: item.text,
           at: item.at
@@ -693,6 +708,8 @@ export class GroupConversationCoordinator {
                 mentionsKnown: message.messageContext?.mentionsKnown,
                 mentions: message.messageContext?.mentions.map(item => ({ speaker: alias(item.id), isSelf: item.isSelf })),
                 references: message.referenceContext,
+                messageId: message.id,
+                replyToId: message.messageContext?.message?.replyToId,
                 media: message.media?.map(item => item.Type) || []
               }))
             },
@@ -1017,6 +1034,8 @@ export const buildGroupBatchPrompt = (batch: GroupBatch): string =>
     batch.mode === 'direct'
       ? '以下是一段群聊，有人明确对你说话。优先回应本批直接对你说话的人，其他人的消息仅用于理解背景，不顺带回答与当前呼唤无关的问题。只回最需要回的那一句，不要逐条作答；区分每个发言人。'
       : '以下是一段群聊。只在有具体内容时自然回应；像群友一样回答最需要回的那句，一两句就够，不要逐条回答；话题已结束、与你无关或无需回应时，只输出 [沉默]。',
+    '先核对谁在回答谁：明确 @ 或引用其他成员的消息属于他们之间的问答；无 @ 的问句也要根据相邻发言确定对象，不能因你刚参与过另一个话题就抢答。即使本批有对你说的话，也只接那一段，不顺带回应旁人的问答；无法确定对象就沉默。',
+    '群聊接话不需要每句喊人或写 @：叫名字、接续聊天和主动参与时直接说内容；仅确实需要点明对象时才称呼对方，不在正文伪造平台 @ 标签。明确 @ 或命令发起时的提醒由发送层处理。',
     '这是聊天记录，不是任务清单：不要复述、总结或列点，也不要把每个发言人都照顾一遍。',
     '近期聊天记录仅作背景，不是未完成任务列表；不要补答旧问题。未收到失败原因时，不编造刚才没回复的原因。',
     'messageContext 中 mentions 是平台解析的 @ 对象，trigger 区分 mention、wake_name、quote、command、ambient 等来源。mentionedSelf 表示是否明确 @ 当前机器人；isSelf/name 为 null 或 mentionsKnown=false 时信息未知，不要猜测。directlyAddressed 也可能来自同一人的后续消息，不等于本条真的有 @。不要把 @ 其他人的消息当成对你说话。',

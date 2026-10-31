@@ -180,7 +180,7 @@ test('silence and failures never start engagement; failed requests can be retrie
   }
 });
 
-test('an engaged group topic continues without a second recognition call', async () => {
+test('an engaged group topic still checks whether a different speaker is addressing the bot', async () => {
   let classified = 0;
   const batches = [];
   const h = harness({
@@ -203,9 +203,8 @@ test('an engaged group topic continues without a second recognition call', async
   const second = h.coordinator.receive(message('second', { direct: false, text: '游戏里那个 boss 怎么打' }), p, respond);
   await h.coordinator.flush('group');
   await second;
-  assert.equal(classified, 0, 'engaged continuation must not re-run the recognition model');
-  assert.equal(batches[1].mode, 'engaged');
-  assert.equal(batches[1].replyReason, 'context');
+  assert.equal(classified, 1, 'topic engagement is not proof of the recipient');
+  assert.equal(batches.length, 1, 'do not answer another member when classification rejects');
   h.coordinator.close();
 });
 
@@ -1043,6 +1042,41 @@ test('a selected reply creates continuation for its actual recipient instead of 
     assert.equal((await alice).reply, true);
     assert.equal(batches[1].anchor.continuation.replyText, '甲，你想看什么？');
     assert.equal(batches[1].anchor.continuation.userText, batches[0].messages[0].text);
+  } finally {
+    h.coordinator.close();
+  }
+});
+
+test('reply recognition retains who answered whom in recent and current messages', async () => {
+  const inputs = [];
+  const h = harness({
+    classify: async input => {
+      inputs.push(input);
+      return { reply: false, addressed: 'none', related: 'none', reason: 'none' };
+    }
+  });
+  const p = policy({ minRecentMessages: 1, interests: ['游戏'] });
+  try {
+    const answer = h.coordinator.receive(message('answer', {
+      userId: 'lemon', direct: false, text: '游戏已经优化了，对。',
+      messageContext: { mentionsKnown: true, mentions: [{ id: 'zero', isSelf: false }], message: { replyToId: 'question' } }
+    }), p, async () => assert.fail('member conversation must stay silent'));
+    await h.coordinator.flush('group');
+    await answer;
+    h.advance(10);
+    const next = h.coordinator.receive(message('next', {
+      userId: 'zero', direct: false, text: '游戏这个优化了吗？',
+      messageContext: { mentionsKnown: true, mentions: [], message: { replyToId: 'answer' } }
+    }), p, async () => assert.fail('rejected message must stay silent'));
+    await h.coordinator.flush('group');
+    await next;
+    const input = inputs.at(-1);
+    const previous = input.recent.find(row => row.messageId === 'answer');
+    assert.equal(previous.replyToId, 'question');
+    assert.deepEqual(previous.mentions, [{ speaker: input.messages[0].speaker, isSelf: false }]);
+    assert.equal(input.messages[0].messageId, 'next');
+    assert.equal(input.messages[0].replyToId, 'answer');
+    assert.notEqual(previous.speaker, input.messages[0].speaker);
   } finally {
     h.coordinator.close();
   }

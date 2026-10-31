@@ -1,4 +1,11 @@
-type ChatLine = { at: number; text: string; speaker: string };
+export type ChatLine = {
+  at: number;
+  text: string;
+  speaker: string;
+  mentions?: { speaker: string; isSelf: boolean | null }[];
+  messageId?: string;
+  replyToId?: string | null;
+};
 export type PerceptionOptions = { maxMessages: number; windowSeconds: number; maxChars: number };
 export const selectPerceptionContext = (
   recent: ChatLine[],

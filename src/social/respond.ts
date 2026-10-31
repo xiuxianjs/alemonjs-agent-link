@@ -119,11 +119,21 @@ export const respondToGroupBatch = async (event: ChatEvent, transport: Transport
           onGroupInboxSpeakers: batch.onGroupInboxSpeakers,
           referencesPrepared: true,
           voice: anchor.voice,
+          mentionReply: Boolean(anchor.explicitMention || anchor.explicitCommand),
           userText: anchor.text,
           allowSilence: batch.mode !== 'direct',
           replyReferences: needsReplySelection(currentBatch)
             ? Object.fromEntries(
-                accepted.flatMap((message, index) => (message.id ? [[`m${index + 1}`, { messageId: message.id, userId: message.userId }]] : []))
+                accepted.flatMap((message, index) =>
+                  message.id
+                    ? [
+                        [
+                          `m${index + 1}`,
+                          { messageId: message.id, userId: message.userId, mentionReply: Boolean(message.explicitMention || message.explicitCommand) }
+                        ]
+                      ]
+                    : []
+                )
               )
             : undefined,
           transport,

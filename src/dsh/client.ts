@@ -317,7 +317,7 @@ export const purgeGroupHashData = async (config: DSHBridgeConfig, groupHash: str
 };
 
 export const toUserMessage = (error: unknown): string => {
-  if (!(error instanceof DSHError)) return '这次处理未完成，请稍后重试；如果涉及修改，请先核对结果。';
+  if (!(error instanceof DSHError)) return '555555，好忙～我先休息一下。';
 
   // 服务诊断保留在错误和日志中，气泡只给出可操作的提示。
   const publicErrors: Record<string, string> = {

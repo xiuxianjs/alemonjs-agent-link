@@ -89,7 +89,8 @@ export const runDSHChat = async (
     requestId?: string;
     autonomous?: { signal: AbortSignal; maxChars: number; beforeSend: (text?: string) => Promise<boolean> };
     userText?: string;
-    replyReferences?: Record<string, { messageId: string; userId: string }>;
+    mentionReply?: boolean;
+    replyReferences?: Record<string, { messageId: string; userId: string; mentionReply?: boolean }>;
     onGroupInboxSpeakers?: import('../../agent/types').TurnContext['onGroupInboxSpeakers'];
     onGroupWakeValid?: () => boolean;
     onGroupWait?: import('../../agent/types').TurnContext['onGroupWait'];
@@ -129,7 +130,7 @@ export const runDSHChat = async (
   let delay: Promise<void> | undefined;
   const beforeExpression = (): Promise<void> =>
     (delay ??= expressionDelay ? wait(expressionDelay, undefined, { signal: turnSignal }).then(() => undefined) : Promise.resolve());
-  let replyTarget = { messageId: event.MessageId, userId: event.UserId };
+  let replyTarget = { messageId: event.MessageId, userId: event.UserId, mentionReply: options.mentionReply ?? event.IsAtMe ?? false };
 
   const reply = async (text: string, notice: { title?: string; actions?: { label: string; command: string }[] } = {}): Promise<unknown> =>
     options.autonomous
@@ -143,7 +144,11 @@ export const runDSHChat = async (
     text = privateSafeOutput(text, config);
     await beforeExpression();
     await checkSend();
-    const format = createChatReplyFormat(text, event.Platform, firstAgentReply && !event.IsPrivate && !options.autonomous ? replyTarget.userId : undefined);
+    const format = createChatReplyFormat(
+      text,
+      event.Platform,
+      firstAgentReply && !event.IsPrivate && !options.autonomous && replyTarget.mentionReply ? replyTarget.userId : undefined
+    );
     const result = await message.send({
       format,
       replyId: firstAgentReply ? replyTarget.messageId : undefined
@@ -551,7 +556,7 @@ ${agentPrompt}`
             const target = options.replyReferences[selected[1]];
 
             if (target) {
-              replyTarget = target;
+              replyTarget = { ...target, mentionReply: Boolean(target.mentionReply || target.userId !== event.UserId) };
             }
             answer = answer.slice(selected[0].length);
           }

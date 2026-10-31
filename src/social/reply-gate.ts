@@ -27,7 +27,14 @@ export type ReplyVerdict = {
 export type ReplyGateInput = {
   scope?: BudgetScope;
   activity?: 'quiet' | 'balanced' | 'active';
-  recent: { speaker: string; text: string; at?: number }[];
+  recent: {
+    speaker: string;
+    text: string;
+    at?: number;
+    mentions?: { speaker: string; isSelf: boolean | null }[];
+    messageId?: string;
+    replyToId?: string | null;
+  }[];
   messages: {
     speaker: string;
     text: string;
@@ -37,6 +44,8 @@ export type ReplyGateInput = {
     mentionsKnown?: boolean;
     mentions?: { speaker: string; isSelf: boolean | null }[];
     references?: string;
+    messageId?: string;
+    replyToId?: string | null;
     media: string[];
   }[];
 };
@@ -99,6 +108,9 @@ my_last_reply（接着机器人上一句回答或追问）；my_thread（接着�
 - 成员明确 @ 或引用其他成员、两人之间的专属交谈、争吵、私人倾诉、敏感个人信息、广告、单纯报错或求助，不用 open_topic 插入。有人要求安静、机器人已被拒绝加入、有人尚未说完时也不加入。
 - 不假装自己玩过、看过、吃过；这里只判断是否可以参与，不创造经历或替机器人决定观点。模糊时保持 none。
 判断规则：
+- 先按每条消息的 speaker、mentions、messageId/replyToId 和引用内容还原“谁在回答谁”，再判断是否对机器人说。明确 @ 其他人的答复优先归入那两人的对话，不能因为机器人刚说过话、话题相似或群聊活跃，就判 my_thread。
+- 无 @ 的短问句也不能自动算追问机器人；若紧邻另一个成员的陈述或已由其他成员接答，且没有接机器人上一句的内容依据，按成员互聊处理。比如机器人聊广告，甲问“优化了吗”，乙 @甲说“对”，这是甲乙之间的问答，不是问机器人是否优化。
+- 本批若同时有人对机器人说话和成员互聊，只据对机器人的那部分放行，不能借机补答旁人的问题。
 - 只提到名字、第三人称议论（“他们说肥鱼是人机”）、转发或引用别人的问题，不算 addressed；是否 related 要看上下文。
 - 群里公开求助、报错、值得帮忙，但没喊机器人、也不在它的上下文里：addressed=none，related=none。不要因为“有用”“值得帮”就放行。
 - 明确对你说“肥鱼，他们说你是人机”“他们说肥鱼你是人机”“肥鱼你怎么这么呆”属于 addressed=name，应回应；这里“人机”是对你的评价，不是发送者自动化的证据。第三人称“他们说肥鱼是人机”可能只是成员互聊，不能仅靠名字放行。
@@ -152,7 +164,7 @@ const classifyGroupReplyInner = async (input: ReplyGateInput, signal: AbortSigna
     const compact = {
       bot: wakeNamesFor(config, input.scope?.channelId || '', input.scope?.platform || ''),
       activity: input.activity || 'balanced',
-      recent: input.recent.slice(-config.perceptionMaxMessages).map(item => ({ speaker: item.speaker, text: item.text.slice(0, 400), at: item.at })),
+      recent: input.recent.slice(-config.perceptionMaxMessages).map(item => ({ ...item, text: item.text.slice(0, 400) })),
       messages: input.messages.map(item => ({
         ...item,
         text: item.text.slice(0, 600),
