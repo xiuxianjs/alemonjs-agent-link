@@ -1,0 +1,23 @@
+{
+  "@nagi-ovo/dsh-visualize@0.1.7": {
+    "tarball": "https://registry.npmjs.org/@nagi-ovo/dsh-visualize/-/dsh-visualize-0.1.7.tgz",
+    "integrity": "sha512-BaKWHbLRVUt6awDtuxF6CJUn/A622DlKlikkYGNy9Nc2CtF5dGnf5wT0XTlgVHd+zahar1BzR6djqOH/+cSwLw==",
+    "source": "https://github.com/Nagi-ovo/dsh-visualize",
+    "reviewedOn": "2026-10-31",
+    "scope": "Owner SDK workspace HTML authoring; no QQ inline renderer or image generation"
+  },
+  "dsh-unitverse@1.1.4": {
+    "tarball": "https://registry.npmjs.org/dsh-unitverse/-/dsh-unitverse-1.1.4.tgz",
+    "integrity": "sha512-RiGajRfbF9wlqZHlMQ8P+dz10t++AC4/d5hHD8EmJQSl4SSTzOjaev2y+8WFKAb91Xl0qnFTn5t2ewV67Ghs2A==",
+    "source": "https://github.com/runcat-tommy/dsh-unitverse",
+    "reviewedOn": "2026-10-31",
+    "scope": "Local deterministic unit conversion; no network or filesystem access in Host tool"
+  },
+  "dsh-plugin-search@0.5.0": {
+    "tarball": "https://registry.npmjs.org/dsh-plugin-search/-/dsh-plugin-search-0.5.0.tgz",
+    "integrity": "sha512-D2dAYNYfxSR58OtHKCd8EI0xdHyUKs0kkOXvwq8FncORmg+DYD69gSiL9wgv0fPMaxXcI/0s4cdD88JAgBi3bA==",
+    "source": "https://github.com/yaqiangsun/dsh-plugin-search",
+    "reviewedOn": "2026-10-31",
+    "scope": "Read-only npm plugin discovery; installable is not a security review or whitelist grant"
+  }
+}

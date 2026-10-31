@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """One group-scoped DSH worker. It receives JSONL only from the loopback bridge."""
-import json, os, sys, uuid
+import json, os, sys, uuid, time
 from pathlib import Path
 
 WORKSPACE = Path(os.environ['DSH_WORKSPACE']).resolve()
@@ -27,8 +27,30 @@ def initialize_harness(harness):
             if attempt == 1:
                 raise
 
+class PermissionVerificationError(Exception): pass
+
+def verify_native_permissions(harness, session, nonce, preset, timeout=2):
+    """rc2 has no permission read API; verify the trusted plugin's pre-prompt ack.
+
+    The pinned SDK stderr buffer is private, deliberately isolated here. Missing
+    or changed SDK internals fail closed rather than silently skipping the check.
+    """
+    session.get_working_directory()  # Materialize the agent without running a model.
+    expected = [nonce, str(session.id), preset]
+    deadline = time.monotonic() + timeout
+    while True:
+        for line in list(getattr(harness.client, '_stderr_lines', ())):
+            if not line.startswith('AGENTLINK_PERMISSION '): continue
+            try: value = json.loads(line[len('AGENTLINK_PERMISSION '):])
+            except ValueError: continue
+            if value == expected: return
+        if time.monotonic() >= deadline:
+            raise PermissionVerificationError('Native permission acknowledgement missing')
+        time.sleep(0.01)
+
 def execution_error_code(error):
     # Return constants only: exception text may contain prompts or credentials.
+    if isinstance(error, PermissionVerificationError): return 'permission-verification'
     message = str(error).lower()
     if 'unsupported or malformed image' in message:
         return 'invalid-image'
@@ -43,7 +65,9 @@ def main():
         runtime = str(bundled_runtime_path())
     except Exception as error:
         emit({'type': 'fatal', 'error': f'DSH runtime unavailable: {error}'}); return 2
-    harness = DeepSeekHarness(dsh_home=str(DSH_HOME), cwd=str(WORKSPACE), dsh_bin=runtime,
+    permission_nonce = uuid.uuid4().hex
+    permission_preset = os.environ.get('DSH_PERMISSION_MODE', 'read-only')
+    harness = DeepSeekHarness(env={'AGENTLINK_PERMISSION_NONCE': permission_nonce}, dsh_home=str(DSH_HOME), cwd=str(WORKSPACE), dsh_bin=runtime,
         profile=os.environ.get('DSH_PROFILE', 'sdk'), provider=os.environ.get('DSH_PROVIDER', 'deepseek-official'),
         model=os.environ.get('DSH_MODEL', 'deepseek-v4-flash'), api_key=os.environ['DSH_PROXY_TOKEN'],
         base_url=os.environ['DSH_PROXY_BASE_URL'], patches=(os.environ['DSH_CHAT_ONLY_PATCH'],),
@@ -76,6 +100,7 @@ def main():
                 physical_session_id = f'{logical_session_id}:w{worker_epoch}'
                 session = (harness.resume_session(physical_session_id) if command.get('resume') is True
                            else harness.start_session(physical_session_id))
+                verify_native_permissions(harness, session, permission_nonce, permission_preset)
                 sessions[logical_session_id] = session
             emit({'type': 'phase', 'phase': 'harness-run'})
             result = session.run(command['message'], on_notification=on_notification)

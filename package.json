@@ -1,6 +1,6 @@
 {
   "name": "alemonjs-agent-link",
-  "version": "0.0.30",
+  "version": "0.0.31",
   "description": "AgentLink",
   "author": {
     "name": "ningmengchongshui",
@@ -18,6 +18,10 @@
     "python/dsh_bridge.py",
     "python/token_usage.py",
     "python/dsh_worker.py",
+    "python/dsh_imagegen.py",
+    "python/native_permissions.mjs",
+    "python/plugin_policy.py",
+    "python/plugin_catalog.json",
     "python/requirements.txt",
     "python/sandbox_profile.py",
     "README.md"
@@ -38,7 +42,7 @@
     "install-fe": "yarn --cwd frontend install",
     "build-fe": "yarn --cwd frontend build",
     "typecheck": "tsc --noEmit",
-    "test": "npm run typecheck && npx lvy build && npx eslint src && node --test --test-force-exit test/*.test.mjs && python3 -m unittest scripts/test_dsh_bridge.py scripts/test_dsh_worker.py scripts/test_local_asr_server.py",
+    "test": "npm run typecheck && npx lvy build && npx eslint src && node --test --test-force-exit test/*.test.mjs && python3 -m unittest scripts/test_dsh_bridge.py scripts/test_dsh_worker.py scripts/test_plugin_policy.py scripts/test_local_asr_server.py",
     "eslint": "eslint src --fix",
     "link-codex": "ln -s \"$PWD/.github/skills\" \"$PWD/.codex/skills\"",
     "format": "prettier --write .",
@@ -264,10 +268,11 @@
     "playwright-core": "^1.64.1",
     "proper-lockfile": "^4.1.2",
     "qrcode": "^1.5.4",
-    "sharp": "^0.34.3"
+    "sharp": "^0.34.3",
+    "undici": "7.30.1"
   },
   "engines": {
     "node": ">=22.13.0"
   },
-  "gitHead": "c670ec5a1e204b7d77566147cbd7a2ab847f9143"
+  "gitHead": "9f82e1cbfc0326bf97b73091c43563f9189580f3"
 }

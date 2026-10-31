@@ -2,6 +2,15 @@
 import sys
 from pathlib import Path
 
+def sandbox_read_roots(runtime: Path, python_root: Path, system: str) -> list[Path]:
+    """Directory grants used by launchers and the configuration isolation guard."""
+    roots = [runtime.resolve().parent, python_root.resolve(), Path(sys.base_prefix).resolve()]
+    if system == 'Darwin':
+        roots.extend(map(Path, ('/System', '/usr', '/opt/homebrew')))
+    elif system == 'Linux':
+        roots.extend(Path(path) for path in ('/usr', '/usr/local', '/bin', '/lib', '/lib64', '/etc/ld.so.conf.d', '/etc/alternatives', '/etc/ssl') if Path(path).exists())
+    return list(dict.fromkeys(path.resolve() for path in roots))
+
 def macos_profile(workspace: Path, dsh_home: Path, runtime: Path, python_root: Path, worker_script: Path, chat_only_patch: Path, proxy_port: int, allow_web: bool = False) -> str:
     """Return a deny-by-default profile for one worker.
 
@@ -9,8 +18,11 @@ def macos_profile(workspace: Path, dsh_home: Path, runtime: Path, python_root: P
     must not cause us to grant the worker read access to the whole plugin tree.
     """
     writable = [workspace.resolve(), dsh_home.resolve()]
-    readonly = [runtime.resolve().parent, python_root.resolve(), Path(sys.base_prefix).resolve(), Path('/System'), Path('/usr'), Path('/opt/homebrew')]
+    readonly = sandbox_read_roots(runtime, python_root, 'Darwin')
     python_runtime = Path(sys.executable).resolve().parents[1]
+    native_permissions = worker_script.with_name('native_permissions.mjs').resolve()
+    adapter_files = [native_permissions, native_permissions.parent.parent / 'package.json'] if native_permissions.is_file() else []
+    adapter_rule = '\n'.join(f'(allow file-read* (literal "{path}"))' for path in adapter_files if path.is_file())
     write_rules = "\n".join(f'(allow file-read* file-write* (subpath "{path}"))' for path in writable)
     read_rules = "\n".join(f'(allow file-read* (subpath "{path}"))' for path in readonly)
     metadata_paths = [Path(sys.executable).resolve(), runtime.resolve(), worker_script.resolve(), chat_only_patch.resolve(), *writable, *readonly]
@@ -23,6 +35,7 @@ def macos_profile(workspace: Path, dsh_home: Path, runtime: Path, python_root: P
 (allow process-exec (subpath "{python_runtime}"))
 (allow process-exec (subpath "{runtime.resolve().parent}"))
 (allow file-read* (literal "{worker_script.resolve()}"))
+{adapter_rule}
 (allow file-read* (literal "{chat_only_patch.resolve()}"))
 ; Attachment storage opens ancestor directories when verifying its safe path.
 ; Literal ancestors grant directory traversal, not reads of sibling files.
@@ -78,6 +91,11 @@ def linux_bwrap_command(
     # Expose only that installation, never the parent plugin data directory.
     for path in dict.fromkeys((python_root, Path(sys.base_prefix).resolve(), runtime.parent, worker_script, chat_only_patch)):
         command.extend(('--ro-bind', str(path), str(path)))
+    native_permissions = worker_script.with_name('native_permissions.mjs').resolve()
+    if native_permissions.is_file():
+        for path in (native_permissions, native_permissions.parent.parent / 'package.json'):
+            if path.is_file():
+                command.extend(('--ro-bind', str(path), str(path)))
     for path in (workspace, dsh_home):
         command.extend(('--bind', str(path), str(path)))
     command.extend(('--chdir', str(workspace), '--', str(python_executable), str(worker_script)))
